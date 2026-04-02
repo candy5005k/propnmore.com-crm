@@ -1,0 +1,22 @@
+# CRM LSR — Apache security rules
+Options -Indexes
+
+# Block direct access to sensitive files
+<FilesMatch "(config\.php|token\.json|credentials\.json|database\.sql|composer\.(json|lock))$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Protect includes directory
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^includes/ - [F,L]
+</IfModule>
+
+# Prevent script execution in uploads
+<Directory "assets/uploads">
+    <FilesMatch "\.(php|php3|php4|php5|phtml|pl|py|cgi)$">
+        Order Deny,Allow
+        Deny from all
+    </FilesMatch>
+</Directory>

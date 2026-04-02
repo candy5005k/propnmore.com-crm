@@ -1,0 +1,23 @@
+# ── Sensitive config — NEVER commit real credentials ──
+config.php
+
+# ── Google API tokens — contain OAuth secrets ──
+token.json
+credentials.json
+
+# ── Composer dependencies ──
+vendor/
+composer.lock
+
+# ── User uploads ──
+assets/uploads/audio/*.mp3
+assets/uploads/audio/*.m4a
+assets/uploads/audio/*.wav
+assets/uploads/audio/*.ogg
+assets/uploads/audio/*.aac
+
+# ── OS / IDE files ──
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
