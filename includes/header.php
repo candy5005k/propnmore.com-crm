@@ -608,16 +608,15 @@ textarea.form-control { resize: vertical; min-height: 90px; }
   <a href="<?= BASE_URL ?>/index.php?source=google" class="nav-item">
     <span class="icon">🔍</span> Google
   </a>
-  <a href="<?= BASE_URL ?>/meta_sync.php" class="nav-item <?= $currentPage==='meta_sync'?'active':'' ?>">
-    <span class="icon">🔄</span> Meta Sync
-  </a>
   <?php endif; ?>
 
-  <!-- ★ Point 12: Google Sheet Quick Open Button -->
+  <?php if ($user['role']==='admin'): ?>
   <div class="nav-section">Quick Links</div>
   <a href="<?= htmlspecialchars($googleSheetUrl) ?>" target="_blank" rel="noopener" class="nav-item nav-item-sheet" id="btn-open-gsheet">
     <span class="icon">📊</span> Open Google Sheet
   </a>
+
+  <?php endif; ?>
 
   <?php if ($user['role']==='admin'): ?>
   <div class="nav-section">Admin</div>
@@ -625,7 +624,7 @@ textarea.form-control { resize: vertical; min-height: 90px; }
     <span class="icon">👥</span> Users
   </a>
   <a href="<?= BASE_URL ?>/admin_sync.php" class="nav-item <?= $currentPage==='admin_sync'?'active':'' ?>">
-    <span class="icon">🔄</span> Sync Sheets
+    <span class="icon">🔄</span> Sync
   </a>
   <a href="<?= BASE_URL ?>/admin_projects.php" class="nav-item <?= $currentPage==='admin_projects'?'active':'' ?>">
     <span class="icon">🏗️</span> Projects
@@ -649,7 +648,8 @@ textarea.form-control { resize: vertical; min-height: 90px; }
     <span class="topbar-title"><?= htmlspecialchars($pageTitle) ?></span>
     <div class="topbar-right">
 
-      <!-- ★ Point 12: Google Sheet button in topbar too -->
+      <?php if ($user['role']==='admin'): ?>
+      <!-- Google Sheet button (admin only) -->
       <a href="<?= htmlspecialchars($googleSheetUrl) ?>" target="_blank" rel="noopener"
          class="btn btn-outline btn-sm" style="gap:6px;border-color:rgba(52,168,83,0.35);color:#4ade80;"
          title="Open Google Sheet in new tab">
@@ -662,6 +662,7 @@ textarea.form-control { resize: vertical; min-height: 90px; }
         </svg>
         Sheet
       </a>
+      <?php endif; ?>
 
       <!-- ★ Point 11: Notification Bell -->
       <div class="notif-bell" id="notif-bell" onclick="toggleNotifPanel()">

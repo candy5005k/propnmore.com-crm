@@ -1,66 +1,146 @@
 <?php
 require_once __DIR__ . '/config.php';
 $user = requireAuth('admin');
-$pageTitle = 'Sync Google Sheets';
+$pageTitle = 'Sync All Sources';
 
 $pdo     = db();
 $results = [];
 $error   = '';
+$metaResults = [];
+$metaSynced = 0;
+$metaSkipped = 0;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    try {
-        require_once __DIR__ . '/includes/sheets.php';
-        $api = new SheetsAPI();
+    $syncType = $_POST['sync_type'] ?? 'sheets';
 
-        $sources = $_POST['sources'] ?? [];
+    // ── Google Sheets Sync ──
+    if ($syncType === 'sheets') {
+        try {
+            require_once __DIR__ . '/includes/sheets.php';
+            $api = new SheetsAPI();
+            $sources = $_POST['sources'] ?? [];
 
-        if (in_array('website', $sources)) {
-            $n = $api->syncWebsite();
-            $results[] = ['source' => 'Website (CNP Leads)', 'count' => $n, 'ok' => true];
-        }
-        if (in_array('meta', $sources)) {
-            $n = $api->syncMeta();
-            $results[] = ['source' => 'Meta (LSR Leads 2026)', 'count' => $n, 'ok' => true];
-        }
-        if (in_array('google', $sources)) {
-            $n = $api->syncGoogle();
-            $results[] = ['source' => 'Google Leads', 'count' => $n, 'ok' => true];
-        }
-        if (in_array('salesteam', $sources)) {
-            $team = $api->getSalesTeam();
-            // Auto-create users from sales team sheet (inactive by default)
-            $created = 0;
-            foreach ($team as $t) {
-                if (empty($t['email'])) continue;
-                $s = $pdo->prepare('SELECT id FROM users WHERE email=?');
-                $s->execute([$t['email']]);
-                if (!$s->fetch()) {
-                    $tmpPass = password_hash(bin2hex(random_bytes(8)), PASSWORD_BCRYPT);
-                    $pdo->prepare('INSERT INTO users (name,email,password,role,is_active) VALUES (?,?,?,?,0)')
-                        ->execute([$t['name'], $t['email'], $tmpPass, 'sales_manager']);
-                    $created++;
-                }
+            if (in_array('website', $sources)) {
+                $n = $api->syncWebsite();
+                $results[] = ['source' => 'Website (CNP Leads)', 'count' => $n, 'ok' => true];
             }
-            $results[] = ['source' => 'Sales Team', 'count' => $created, 'ok' => true, 'note' => '(new accounts created inactive)'];
+            if (in_array('meta', $sources)) {
+                $n = $api->syncMeta();
+                $results[] = ['source' => 'Meta (LSR Leads 2026)', 'count' => $n, 'ok' => true];
+            }
+            if (in_array('google', $sources)) {
+                $n = $api->syncGoogle();
+                $results[] = ['source' => 'Google Leads', 'count' => $n, 'ok' => true];
+            }
+            if (in_array('salesteam', $sources)) {
+                $team = $api->getSalesTeam();
+                $created = 0;
+                foreach ($team as $t) {
+                    if (empty($t['email'])) continue;
+                    $s = $pdo->prepare('SELECT id FROM users WHERE email=?');
+                    $s->execute([$t['email']]);
+                    if (!$s->fetch()) {
+                        $tmpPass = password_hash(bin2hex(random_bytes(8)), PASSWORD_BCRYPT);
+                        $pdo->prepare('INSERT INTO users (name,email,password,role,is_active) VALUES (?,?,?,?,0)')
+                            ->execute([$t['name'], $t['email'], $tmpPass, 'sales_manager']);
+                        $created++;
+                    }
+                }
+                $results[] = ['source' => 'Sales Team', 'count' => $created, 'ok' => true, 'note' => '(new accounts created inactive)'];
+            }
+        } catch (Exception $e) {
+            $error = $e->getMessage();
         }
+    }
 
-    } catch (Exception $e) {
-        $error = $e->getMessage();
+    // ── Meta API Sync (from Facebook directly) ──
+    if ($syncType === 'meta_api') {
+        $PAGE_ID = '387375521120468';
+        $TOKEN   = defined('META_PAGE_ACCESS_TOKEN') ? META_PAGE_ACCESS_TOKEN : '';
+
+        if (!$TOKEN) {
+            $error = 'META_PAGE_ACCESS_TOKEN not configured.';
+        } else {
+            $forms = metaCurl("https://graph.facebook.com/v21.0/{$PAGE_ID}/leadgen_forms?fields=id,name,status&limit=50&access_token={$TOKEN}");
+            if (!$forms || empty($forms['data'])) {
+                $error = 'Could not fetch lead forms. Check Page Access Token.';
+            } else {
+                foreach ($forms['data'] as $form) {
+                    $formId   = $form['id'];
+                    $formName = $form['name'] ?? 'Unknown Form';
+                    $leadsUrl = "https://graph.facebook.com/v21.0/{$formId}/leads?fields=id,created_time,field_data&limit=500&access_token={$TOKEN}";
+
+                    while ($leadsUrl) {
+                        $leadsResp = metaCurl($leadsUrl);
+                        if (!$leadsResp || empty($leadsResp['data'])) break;
+
+                        foreach ($leadsResp['data'] as $lead) {
+                            $fields = [];
+                            $allQA = [];
+                            foreach ($lead['field_data'] ?? [] as $f) {
+                                $key = strtolower(str_replace([' ', '-'], '_', $f['name']));
+                                $val = $f['values'][0] ?? '';
+                                $fields[$key] = $val;
+                                $allQA[] = $f['name'] . ': ' . $val;
+                            }
+
+                            $firstName = $fields['first_name'] ?? $fields['full_name'] ?? '';
+                            $lastName  = $fields['last_name']  ?? '';
+                            $mobile    = $fields['phone_number'] ?? $fields['phone'] ?? $fields['mobile'] ?? '';
+                            $email     = $fields['email'] ?? '';
+                            $pref      = $fields['preference'] ?? $fields['select_your_preference'] ?? $fields['interested_in'] ?? $fields['configuration'] ?? '';
+                            $mobile    = preg_replace('/[^0-9+]/', '', $mobile);
+                            $createdAt = $lead['created_time'] ?? date('Y-m-d H:i:s');
+
+                            $leadId = $lead['id'] ?? '';
+                            if ($leadId) {
+                                $dup = $pdo->prepare('SELECT id FROM leads WHERE source_row_id=? AND source="meta"');
+                                $dup->execute([$leadId]);
+                                if ($dup->fetch()) { $metaSkipped++; continue; }
+                            }
+
+                            $notes = "Form: {$formName}\n";
+                            if ($pref) $notes .= "Preference: {$pref}\n";
+                            $notes .= "---\nAll Answers: " . implode(' | ', $allQA);
+
+                            try {
+                                $pdo->prepare('INSERT INTO leads (source, source_row_id, first_name, last_name, mobile, email, preference, project_name, form_name, notes, lead_type, lead_status, created_at) VALUES ("meta", ?, ?, ?, ?, ?, ?, ?, ?, ?, "warm", "sv_pending", ?)')
+                                    ->execute([$leadId, $firstName, $lastName, $mobile, $email, $pref, $formName, $formName, $notes, $createdAt]);
+                            } catch (\PDOException $e) {
+                                $pdo->prepare('INSERT INTO leads (source, source_row_id, first_name, last_name, mobile, email, preference, comments, lead_type, lead_status, created_at) VALUES ("meta", ?, ?, ?, ?, ?, ?, ?, "warm", "sv_pending", ?)')
+                                    ->execute([$leadId, $firstName, $lastName, $mobile, $email, $pref, $notes, $createdAt]);
+                            }
+                            $metaSynced++;
+                            $metaResults[] = ['name' => trim("$firstName $lastName"), 'mobile' => $mobile, 'form' => $formName];
+                        }
+                        $leadsUrl = $leadsResp['paging']['next'] ?? null;
+                    }
+                }
+                $pdo->prepare('INSERT INTO sync_log (source, rows_synced) VALUES ("meta_api", ?)')->execute([$metaSynced]);
+            }
+        }
     }
 }
 
-// Sync log
-$logs = $pdo->query('SELECT * FROM sync_log ORDER BY id DESC LIMIT 20')->fetchAll();
+function metaCurl(string $url): ?array {
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30, CURLOPT_SSL_VERIFYPEER => true]);
+    $resp = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    if ($code !== 200 || !$resp) return null;
+    return json_decode($resp, true);
+}
 
+$logs = $pdo->query('SELECT * FROM sync_log ORDER BY id DESC LIMIT 20')->fetchAll();
 include __DIR__ . '/includes/header.php';
 ?>
 
 <div style="max-width:700px">
 
-  <h2 style="font-family:'DM Serif Display',serif;font-size:22px;margin-bottom:8px">🔄 Sync Google Sheets</h2>
+  <h2 style="font-family:'DM Serif Display',serif;font-size:22px;margin-bottom:8px">🔄 Sync All Sources</h2>
   <p style="color:var(--text2);font-size:13px;margin-bottom:24px;line-height:1.6">
-    Pull latest leads from Google Sheets into the CRM. Existing leads (matched by mobile or row ID) are not duplicated.
-    Make sure <code style="background:var(--bg);padding:2px 6px;border-radius:5px">token.json</code> is in the CRM root folder.
+    Pull leads from Google Sheets or directly from Facebook Lead Forms into the CRM.
   </p>
 
   <?php if ($error): ?><div class="alert alert-error">❌ <?= htmlspecialchars($error) ?></div><?php endif; ?>
@@ -76,9 +156,27 @@ include __DIR__ . '/includes/header.php';
     </div>
   <?php endif; ?>
 
+  <?php if ($metaSynced > 0 || $metaSkipped > 0): ?>
+    <div class="grid-3" style="margin-bottom:20px">
+      <div class="stat-card" style="border-color:rgba(74,222,128,0.3)">
+        <div class="stat-label" style="color:#4ade80">✅ Synced</div>
+        <div class="stat-value" style="color:#4ade80"><?= $metaSynced ?></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label" style="color:#fbbf24">⏭ Skipped</div>
+        <div class="stat-value" style="color:#fbbf24"><?= $metaSkipped ?></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">📊 Total</div>
+        <div class="stat-value"><?= $metaSynced + $metaSkipped ?></div>
+      </div>
+    </div>
+  <?php endif; ?>
+
+  <!-- Google Sheets Sync -->
   <div class="card">
     <form method="POST">
-      <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--text2);margin-bottom:16px">Select sheets to sync</div>
+      <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--text2);margin-bottom:16px">Google Sheets Sync</div>
 
       <div style="display:flex;flex-direction:column;gap:14px;margin-bottom:24px">
         <?php $opts = [
@@ -98,7 +196,16 @@ include __DIR__ . '/includes/header.php';
         <?php endforeach; ?>
       </div>
 
-      <button type="submit" class="btn btn-primary" style="width:100%">🔄 Run Sync Now</button>
+      <button type="submit" name="sync_type" value="sheets" class="btn btn-primary" style="width:100%">🔄 Sync Google Sheets</button>
+    </form>
+  </div>
+
+  <!-- Meta API Sync -->
+  <div class="card" style="margin-top:20px;border-color:rgba(59,130,246,0.25)">
+    <form method="POST">
+      <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#60a5fa;margin-bottom:12px">📱 Facebook Meta API Sync</div>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:16px">Pull leads directly from Facebook Lead Forms API. Fetches all form answers, campaign names. Duplicates auto-skipped.</p>
+      <button type="submit" name="sync_type" value="meta_api" class="btn btn-primary" style="width:100%;background:linear-gradient(135deg,#3b82f6,#60a5fa);color:#fff">📥 Sync Meta Leads from Facebook</button>
     </form>
   </div>
 

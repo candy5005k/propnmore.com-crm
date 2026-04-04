@@ -203,7 +203,7 @@ include __DIR__ . '/includes/header.php';
         <th>Name</th>
         <th>Mobile</th>
         <th>Project</th>
-        <th>Source</th>
+        <?php if ($user['role']==='admin'): ?><th>Source</th><?php endif; ?>
         <th>Type</th>
         <th>Status</th>
         <th>Assigned</th>
@@ -214,7 +214,7 @@ include __DIR__ . '/includes/header.php';
     </thead>
     <tbody>
     <?php if (empty($leads)): ?>
-      <tr><td colspan="11" style="text-align:center;padding:40px;color:var(--text2)">No leads found. Adjust filters or sync sheets.</td></tr>
+      <tr><td colspan="<?= $user['role']==='admin' ? '11' : '10' ?>" style="text-align:center;padding:40px;color:var(--text2)">No leads found. Adjust filters or sync sheets.</td></tr>
     <?php endif; ?>
     <?php foreach ($leads as $l): ?>
       <tr>
@@ -236,12 +236,14 @@ include __DIR__ . '/includes/header.php';
             <div style="font-size:10px;color:var(--text2);margin-top:1px">📢 <?= htmlspecialchars($l['campaign_name']) ?></div>
           <?php endif; ?>
         </td>
+        <?php if ($user['role']==='admin'): ?>
         <td>
           <span class="badge badge-<?= $l['source'] ?>">
             <?= match($l['source']) { 'website'=>'🌐', 'meta'=>'📱', 'google'=>'🔍', default=>'✏️' } ?>
             <?= ucfirst($l['source']) ?>
           </span>
         </td>
+        <?php endif; ?>
         <td>
           <span class="badge badge-<?= $l['lead_type'] ?>">
             <?= match($l['lead_type']) { 'hot'=>'🔥', 'warm'=>'☀️', 'cold'=>'❄️', default=>'' } ?>
