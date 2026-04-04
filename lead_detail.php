@@ -93,14 +93,118 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['action']) && $_POST['ac
         // ★ Point 11: Send notification to newly assigned sales manager
         $newAssigned = (int)($lead['assigned_to'] ?? 0);
         if ($newAssigned > 0 && $newAssigned !== $oldAssigned) {
-            $leadName = trim($lead['first_name'] . ' ' . $lead['last_name']);
+            $leadName    = trim($lead['first_name'] . ' ' . $lead['last_name']);
+            $projectName = $lead['project_name'] ?? 'N/A';
+            $leadMobile  = $lead['mobile'] ?? '';
+            $leadEmail   = $lead['email'] ?? '';
+            $leadPref    = $lead['preference'] ?? '';
+            $assignerName = $user['name'];
+
+            // In-app notification
             createNotification(
                 $newAssigned,
                 '🎯 New Lead Assigned to You',
-                "Lead \"{$leadName}\" (#{$id}) has been assigned to you by {$user['name']}.",
+                "Lead \"{$leadName}\" (#{$id}) has been assigned to you by {$assignerName}.",
                 $id,
                 'lead_assigned'
             );
+
+            // ★ Email notification to sales manager
+            $smData = $pdo->prepare('SELECT name, email FROM users WHERE id=?');
+            $smData->execute([$newAssigned]);
+            $smInfo = $smData->fetch();
+
+            if ($smInfo && $smInfo['email']) {
+                $smName  = $smInfo['name'];
+                $smEmail = $smInfo['email'];
+                $leadUrl = BASE_URL . '/lead_detail.php?id=' . $id;
+                $dateStr = date('d M Y, h:i A');
+
+                $emailBody = '
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#0a0e17;font-family:Arial,Helvetica,sans-serif">
+<div style="max-width:600px;margin:30px auto;background:#0f1623;border:1px solid #1a2640;border-radius:16px;overflow:hidden">
+
+  <!-- Header -->
+  <div style="background:linear-gradient(135deg,#c9a96e,#e8c98a);padding:28px 32px;text-align:center">
+    <h1 style="margin:0;font-size:22px;color:#0a0e17;font-weight:800;letter-spacing:0.5px">🎯 New Lead Assigned</h1>
+    <p style="margin:8px 0 0;font-size:13px;color:rgba(10,14,23,0.7)">Propnmore CRM · LSR LEADS 2026</p>
+  </div>
+
+  <!-- Body -->
+  <div style="padding:28px 32px">
+    <p style="color:#dde3f0;font-size:15px;margin:0 0 20px;line-height:1.6">
+      Hi <strong>' . htmlspecialchars($smName) . '</strong>,<br><br>
+      A new lead has been assigned to you by <strong style="color:#c9a96e">' . htmlspecialchars($assignerName) . '</strong>.
+      Please follow up at the earliest.
+    </p>
+
+    <!-- Lead Card -->
+    <div style="background:#080d16;border:1px solid #1a2640;border-radius:12px;padding:20px;margin-bottom:20px">
+      <table style="width:100%;border-collapse:collapse">
+        <tr>
+          <td style="padding:8px 0;color:#8a9ab8;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;width:120px">Lead Name</td>
+          <td style="padding:8px 0;color:#dde3f0;font-size:15px;font-weight:600">' . htmlspecialchars($leadName) . '</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 0;color:#8a9ab8;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px">📞 Mobile</td>
+          <td style="padding:8px 0;color:#dde3f0;font-size:15px"><a href="tel:' . htmlspecialchars($leadMobile) . '" style="color:#c9a96e;text-decoration:none">' . htmlspecialchars($leadMobile) . '</a></td>
+        </tr>
+        ' . ($leadEmail ? '<tr>
+          <td style="padding:8px 0;color:#8a9ab8;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px">📧 Email</td>
+          <td style="padding:8px 0;color:#dde3f0;font-size:15px">' . htmlspecialchars($leadEmail) . '</td>
+        </tr>' : '') . '
+        <tr>
+          <td style="padding:8px 0;color:#8a9ab8;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px">🏗️ Project</td>
+          <td style="padding:8px 0;color:#e8c98a;font-size:15px;font-weight:600">' . htmlspecialchars($projectName) . '</td>
+        </tr>
+        ' . ($leadPref ? '<tr>
+          <td style="padding:8px 0;color:#8a9ab8;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px">📋 Preference</td>
+          <td style="padding:8px 0;color:#dde3f0;font-size:15px">' . htmlspecialchars($leadPref) . '</td>
+        </tr>' : '') . '
+        <tr>
+          <td style="padding:8px 0;color:#8a9ab8;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px">📅 Assigned</td>
+          <td style="padding:8px 0;color:#dde3f0;font-size:14px">' . $dateStr . '</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 0;color:#8a9ab8;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px">👤 By</td>
+          <td style="padding:8px 0;color:#c9a96e;font-size:15px;font-weight:600">' . htmlspecialchars($assignerName) . '</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- CTA Button -->
+    <div style="text-align:center;margin:24px 0 8px">
+      <a href="' . $leadUrl . '" style="display:inline-block;background:linear-gradient(135deg,#c9a96e,#e8c98a);color:#0a0e17;text-decoration:none;padding:14px 36px;border-radius:10px;font-size:15px;font-weight:700;letter-spacing:0.3px">
+        View Lead Details →
+      </a>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div style="border-top:1px solid #1a2640;padding:18px 32px;text-align:center">
+    <p style="margin:0;font-size:11px;color:#8a9ab8">
+      Propnmore CRM · LSR LEADS 2026<br>
+      <a href="' . BASE_URL . '" style="color:#c9a96e;text-decoration:none">crm.propnmore.com</a>
+    </p>
+  </div>
+
+</div>
+</body></html>';
+
+                $emailSent = sendMail(
+                    $smEmail,
+                    "🎯 New Lead Assigned: {$leadName} — {$projectName}",
+                    $emailBody
+                );
+
+                if ($emailSent) {
+                    error_log("CRM: ✅ Assignment email sent to {$smEmail} for lead #{$id}");
+                } else {
+                    error_log("CRM: ❌ Failed to send assignment email to {$smEmail}");
+                }
+            }
         }
     }
 }

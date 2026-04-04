@@ -7,3 +7,7 @@ ALTER TABLE leads
     ADD COLUMN form_name VARCHAR(255) DEFAULT NULL AFTER ad_name,
     ADD COLUMN project_name VARCHAR(255) DEFAULT NULL AFTER form_name,
     ADD COLUMN notes TEXT DEFAULT NULL AFTER project_name;
+
+-- Update admin profiles with correct names
+UPDATE users SET name = 'Prashant Das' WHERE email = 'PD@propnmore.com';
+UPDATE users SET name = 'Chirag Shah'  WHERE email = 'CS@propnmore.com';
