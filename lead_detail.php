@@ -6,7 +6,9 @@ $id   = (int)($_GET['id'] ?? 0);
 $pdo  = db();
 
 // Fetch lead
-$st = $pdo->prepare('SELECT l.*,p.name AS project_name,u.name AS assigned_name
+$st = $pdo->prepare('SELECT l.*, COALESCE(p.name, l.project_name) AS project_name,
+    l.campaign_name, l.ad_name, l.form_name, l.notes,
+    u.name AS assigned_name
     FROM leads l
     LEFT JOIN projects p ON l.project_id=p.id
     LEFT JOIN users u ON l.assigned_to=u.id
@@ -160,6 +162,83 @@ include __DIR__ . '/includes/header.php';
         <?php endforeach; ?>
       </div>
     </div>
+
+    <?php if ($lead['source'] === 'meta'): ?>
+    <!-- Meta Lead Details Card -->
+    <div class="card" style="border-color:rgba(59,130,246,0.25)">
+      <div style="font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#60a5fa;margin-bottom:14px">📱 Meta Lead Details</div>
+      
+      <?php if (!empty($lead['campaign_name']) || !empty($lead['ad_name']) || !empty($lead['form_name'])): ?>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+        <?php if (!empty($lead['campaign_name'])): ?>
+        <div style="background:var(--bg);border-radius:10px;padding:12px 16px">
+          <div style="font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--text2);margin-bottom:4px">📢 Campaign</div>
+          <div style="font-size:14px;color:var(--accent)"><?= htmlspecialchars($lead['campaign_name']) ?></div>
+        </div>
+        <?php endif; ?>
+        <?php if (!empty($lead['ad_name'])): ?>
+        <div style="background:var(--bg);border-radius:10px;padding:12px 16px">
+          <div style="font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--text2);margin-bottom:4px">🎯 Ad Name</div>
+          <div style="font-size:14px;color:var(--text)"><?= htmlspecialchars($lead['ad_name']) ?></div>
+        </div>
+        <?php endif; ?>
+        <?php if (!empty($lead['form_name'])): ?>
+        <div style="background:var(--bg);border-radius:10px;padding:12px 16px">
+          <div style="font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--text2);margin-bottom:4px">📝 Form Name</div>
+          <div style="font-size:14px;color:var(--text)"><?= htmlspecialchars($lead['form_name']) ?></div>
+        </div>
+        <?php endif; ?>
+      </div>
+      <?php endif; ?>
+
+      <?php
+      // Parse notes for form Q&A
+      $notesText = $lead['notes'] ?? $lead['comments'] ?? '';
+      $qaLines = [];
+      if ($notesText) {
+          // Extract "All Answers:" section
+          if (preg_match('/All Answers:\s*(.+)$/s', $notesText, $m)) {
+              $pairs = explode(' | ', trim($m[1]));
+              foreach ($pairs as $pair) {
+                  $parts = explode(': ', $pair, 2);
+                  if (count($parts) === 2) {
+                      $qaLines[] = ['q' => trim($parts[0]), 'a' => trim($parts[1])];
+                  }
+              }
+          }
+          // Also extract individual lines like "Preference: 4 BHK"
+          if (empty($qaLines)) {
+              foreach (explode("\n", $notesText) as $line) {
+                  $line = trim($line);
+                  if ($line && $line !== '---' && strpos($line, ':') !== false) {
+                      $parts = explode(': ', $line, 2);
+                      if (count($parts) === 2 && !in_array($parts[0], ['All Answers'])) {
+                          $qaLines[] = ['q' => trim($parts[0]), 'a' => trim($parts[1])];
+                      }
+                  }
+              }
+          }
+      }
+      ?>
+
+      <?php if (!empty($qaLines)): ?>
+      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:10px;text-transform:uppercase;letter-spacing:1px">Form Answers</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <?php foreach ($qaLines as $qa): ?>
+        <div style="background:var(--bg);border-radius:10px;padding:12px 16px;border-left:3px solid rgba(59,130,246,0.4)">
+          <div style="font-size:11px;font-weight:600;color:#60a5fa;margin-bottom:3px"><?= htmlspecialchars($qa['q']) ?></div>
+          <div style="font-size:14px;color:var(--text)"><?= htmlspecialchars($qa['a']) ?></div>
+        </div>
+        <?php endforeach; ?>
+      </div>
+      <?php elseif ($notesText): ?>
+      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:10px;text-transform:uppercase;letter-spacing:1px">Raw Notes</div>
+      <div style="background:var(--bg);border-radius:10px;padding:14px;font-size:13px;color:var(--text);line-height:1.6;white-space:pre-wrap"><?= htmlspecialchars($notesText) ?></div>
+      <?php else: ?>
+      <div style="color:var(--text2);font-size:13px">No form data available. Sync leads to fetch form answers.</div>
+      <?php endif; ?>
+    </div>
+    <?php endif; ?>
 
     <!-- Comments -->
     <div class="card">
