@@ -597,6 +597,7 @@ textarea.form-control { resize: vertical; min-height: 90px; }
   </a>
   <?php endif; ?>
 
+  <?php if ($user['role']==='admin'): ?>
   <div class="nav-section">Sources</div>
   <a href="<?= BASE_URL ?>/index.php?source=website" class="nav-item">
     <span class="icon">🌐</span> Website
@@ -607,6 +608,10 @@ textarea.form-control { resize: vertical; min-height: 90px; }
   <a href="<?= BASE_URL ?>/index.php?source=google" class="nav-item">
     <span class="icon">🔍</span> Google
   </a>
+  <a href="<?= BASE_URL ?>/meta_sync.php" class="nav-item <?= $currentPage==='meta_sync'?'active':'' ?>">
+    <span class="icon">🔄</span> Meta Sync
+  </a>
+  <?php endif; ?>
 
   <!-- ★ Point 12: Google Sheet Quick Open Button -->
   <div class="nav-section">Quick Links</div>

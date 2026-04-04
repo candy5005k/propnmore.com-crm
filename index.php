@@ -51,7 +51,8 @@ $totalPages = max(1, ceil($totalRows / $perPage));
 
 // ── Leads query ───────────────────────────────────────────────────────────────
 $sql = "SELECT l.*, 
-               p.name AS project_name,
+               COALESCE(p.name, l.project_name) AS project_name,
+               l.campaign_name, l.ad_name, l.form_name, l.notes,
                CONCAT(u.name) AS assigned_name,
                (SELECT COUNT(*) FROM followups f WHERE f.lead_id=l.id) AS followup_count
         FROM leads l
@@ -229,8 +230,11 @@ include __DIR__ . '/includes/header.php';
             <?= htmlspecialchars($l['mobile']) ?>
           </a>
         </td>
-        <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+        <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="<?= htmlspecialchars($l['campaign_name'] ?? '') ?>">
           <?= htmlspecialchars($l['project_name'] ?? '—') ?>
+          <?php if (!empty($l['campaign_name'])): ?>
+            <div style="font-size:10px;color:var(--text2);margin-top:1px">📢 <?= htmlspecialchars($l['campaign_name']) ?></div>
+          <?php endif; ?>
         </td>
         <td>
           <span class="badge badge-<?= $l['source'] ?>">
