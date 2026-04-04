@@ -7,6 +7,7 @@
 //  page and inserts them directly into the CRM database.
 // ============================================================
 
+
 require_once __DIR__ . '/config.php';
 
 // Allow any of your landing pages to send data here
@@ -55,21 +56,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $pdo = db();
 
-    // Deduplicate by mobile (prevent spamming reload)
-    $check = $pdo->prepare('SELECT id FROM leads WHERE mobile=? AND source="website"');
+    // Deduplicate by mobile — only block if same number submitted within last 10 minutes
+    // This prevents spam on reload but allows genuine re-enquiries after the window
+    $check = $pdo->prepare('SELECT id FROM leads WHERE mobile=? AND source="website" AND created_at >= DATE_SUB(NOW(), INTERVAL 10 MINUTE)');
     $check->execute([$mobile]);
     if ($check->fetch()) {
         http_response_code(200);
-        exit(json_encode(['success' => true, 'message' => 'Duplicate lead, skipped']));
+        exit(json_encode(['success' => true, 'message' => 'Duplicate lead (within 10min window), skipped']));
+    }
+
+    // Ensure Project ID exists based on Site Name (case-insensitive lookup)
+    // For Azalea, siteName = 'azalea' — matches 'Azalea', 'AZALEA', etc.
+    $projCheck = $pdo->prepare('SELECT id FROM projects WHERE LOWER(name) = LOWER(?)');
+    $projCheck->execute([$siteName]);
+    $project = $projCheck->fetch();
+    
+    if ($project) {
+        $projectId = $project['id'];
+    } else {
+        // Create project if it doesn't exist yet
+        $pdo->prepare('INSERT INTO projects (name) VALUES (?)')->execute([ucfirst($siteName)]);
+        $projectId = (int)$pdo->lastInsertId();
+        error_log("Website API: Auto-created project '{$siteName}' with ID {$projectId}");
     }
 
     // Insert lead into CRM
     $pdo->prepare('
         INSERT INTO leads
-            (source, first_name, last_name, mobile, email, preference, lead_type, lead_status, created_at)
+            (source, project_id, first_name, last_name, mobile, email, preference, lead_type, lead_status, created_at)
         VALUES
-            ("website", ?, "", ?, ?, ?, "warm", "sv_pending", NOW())
+            ("website", ?, ?, "", ?, ?, ?, "warm", "sv_pending", NOW())
     ')->execute([
+        $projectId,
         $firstName,
         $mobile,
         $email,
@@ -78,10 +96,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $newId = (int)$pdo->lastInsertId();
 
+    if ($newId === 0) {
+        // Insert failed silently — log and return error
+        error_log("Website API ERROR: INSERT failed for {$firstName} ({$mobile}) from {$siteName}");
+        http_response_code(500);
+        exit(json_encode(['success' => false, 'message' => 'DB insert failed']));
+    }
+
     // Log the event
-    $pdo->prepare('INSERT INTO sync_log (source, rows_synced) VALUES ("website_api", 1)')->execute();
+    try {
+        $pdo->prepare('INSERT INTO sync_log (source, rows_synced) VALUES ("website_api", 1)')->execute();
+    } catch (\Exception $e) {
+        error_log('Website API: sync_log insert failed (table may not exist): ' . $e->getMessage());
+    }
 
     error_log("Website API Webhook: Lead #{$newId} saved from {$siteName} — {$firstName} ({$mobile})");
+
+    // Send Instant Lead Notification to Admin
+    $notifyEmail = 'cnpgreenfield@gmail.com';
+    $subject = "🔥 CRM Alert: New Lead from " . strtoupper($siteName);
+    $htmlBody = "
+    <div style='font-family:sans-serif;max-width:500px;margin:20px auto;border:1px solid #e5e7eb;border-radius:8px;padding:20px;'>
+        <h2 style='margin-top:0'>New Lead via Website</h2>
+        <p>A new lead has just entered the CRM.</p>
+        <div style='background:#f1f5f9;padding:15px;border-radius:6px;'>
+            <strong>Name:</strong> {$firstName}<br>
+            <strong>Mobile:</strong> {$mobile}<br>
+            <strong>Email:</strong> " . ($email ?: 'N/A') . "<br>
+            <strong>Source:</strong> " . strtoupper($siteName) . "<br>
+            <strong>Preferences:</strong> {$fullPref}
+        </div>
+        <p style='margin-top:20px;'><a href='https://crm.propnmore.com' style='background:#000;color:#fff;padding:10px 15px;text-decoration:none;border-radius:4px;'>Open CRM</a></p>
+    </div>";
+    
+    sendMail($notifyEmail, $subject, $htmlBody);
 
     http_response_code(200);
     echo json_encode(['success' => true, 'message' => 'Lead successfully added to CRM']);
