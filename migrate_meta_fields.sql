@@ -9,5 +9,5 @@ ALTER TABLE leads
     ADD COLUMN notes TEXT DEFAULT NULL AFTER project_name;
 
 -- Update admin profiles with correct names
-UPDATE users SET name = 'Prashant Das' WHERE email = 'PD@propnmore.com';
+UPDATE users SET name = 'Prashanta Das' WHERE email = 'PD@propnmore.com';
 UPDATE users SET name = 'Chirag Shah'  WHERE email = 'CS@propnmore.com';
