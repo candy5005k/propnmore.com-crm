@@ -8,10 +8,13 @@ $error = $success = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $first  = trim($_POST['first_name'] ?? '');
-    $mobile = trim($_POST['mobile']     ?? '');
+    $last   = trim($_POST['last_name'] ?? '');
+    $country_code = trim($_POST['country_code'] ?? '+91');
+    $mobile_number = trim($_POST['mobile'] ?? '');
+    $mobile = $country_code . ' ' . $mobile_number;
 
-    if (!$first || !$mobile) {
-        $error = 'First name and mobile are required.';
+    if (!$first || !$last || !$mobile_number) {
+        $error = 'First name, last name, and mobile are required.';
     } else {
         // Project
         $pname = trim($_POST['project_name'] ?? '');
@@ -84,12 +87,21 @@ include __DIR__ . '/includes/header.php';
         <input type="text" name="first_name" class="form-control" required>
       </div>
       <div class="form-group">
-        <label>Last Name</label>
-        <input type="text" name="last_name" class="form-control">
+        <label>Last Name <span style="color:var(--danger)">*</span></label>
+        <input type="text" name="last_name" class="form-control" required>
       </div>
       <div class="form-group">
         <label>Mobile <span style="color:var(--danger)">*</span></label>
-        <input type="text" name="mobile" class="form-control" required placeholder="91XXXXXXXXXX">
+        <div style="display:flex;gap:8px">
+          <select name="country_code" class="form-control" style="width:80px">
+            <option value="+91" selected>+91</option>
+            <option value="+1">+1</option>
+            <option value="+44">+44</option>
+            <option value="+971">+971</option>
+            <option value="+61">+61</option>
+          </select>
+          <input type="text" name="mobile" class="form-control" required placeholder="XXXXXXXXXX" style="flex:1">
+        </div>
       </div>
       <div class="form-group">
         <label>Email</label>

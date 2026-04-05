@@ -16,6 +16,10 @@ assets/uploads/audio/*.wav
 assets/uploads/audio/*.ogg
 assets/uploads/audio/*.aac
 
+# ── Documentation / guide text files ──
+*.txt
+*.md
+
 # ── OS / IDE files ──
 .DS_Store
 Thumbs.db

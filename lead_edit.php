@@ -13,6 +13,12 @@ if (!$lead) { header('Location: ' . BASE_URL . '/index.php'); exit; }
 $error = $success = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (isset($_POST['action']) && $_POST['action'] === 'delete') {
+        $pdo->prepare('UPDATE leads SET is_deleted = 1 WHERE id=?')->execute([$id]);
+        header('Location: ' . BASE_URL . '/index.php');
+        exit;
+    }
+
     $oldAssigned = (int)$lead['assigned_to'];
     $fields = [
         'first_name','last_name','mobile','email','preference',
@@ -22,7 +28,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $sets = []; $vals = [];
     foreach ($fields as $f) {
         $sets[] = "{$f}=?";
-        $vals[] = $_POST[$f] !== '' ? $_POST[$f] : null;
+        if ($f === 'mobile') {
+            $country = trim($_POST['country_code'] ?? '+91');
+            $num = trim($_POST['mobile'] ?? '');
+            $vals[] = $country . ' ' . $num;
+        } else {
+            $vals[] = $_POST[$f] !== '' ? $_POST[$f] : null;
+        }
     }
 
     // Handle project name → id
@@ -92,7 +104,25 @@ include __DIR__ . '/includes/header.php';
       </div>
       <div class="form-group">
         <label>Mobile</label>
-        <input type="text" name="mobile" class="form-control" value="<?= htmlspecialchars($lead['mobile']) ?>">
+        <?php
+          $rawMob = $lead['mobile'] ?? '';
+          $ccode = '+91';
+          $numOnly = $rawMob;
+          if (preg_match('/^(\+\d{1,3})\s*(.*)$/', $rawMob, $m)) {
+              $ccode = $m[1];
+              $numOnly = $m[2];
+          }
+        ?>
+        <div style="display:flex;gap:8px">
+          <select name="country_code" class="form-control" style="width:80px">
+            <option value="+91" <?= $ccode==='+91'?'selected':'' ?>>+91</option>
+            <option value="+1" <?= $ccode==='+1'?'selected':'' ?>>+1</option>
+            <option value="+44" <?= $ccode==='+44'?'selected':'' ?>>+44</option>
+            <option value="+971" <?= $ccode==='+971'?'selected':'' ?>>+971</option>
+            <option value="+61" <?= $ccode==='+61'?'selected':'' ?>>+61</option>
+          </select>
+          <input type="text" name="mobile" class="form-control" value="<?= htmlspecialchars($numOnly) ?>" style="flex:1">
+        </div>
       </div>
       <div class="form-group">
         <label>Email</label>
@@ -148,11 +178,11 @@ include __DIR__ . '/includes/header.php';
     <div class="grid-2">
       <div class="form-group">
         <label>Date</label>
-        <input type="text" name="sheet_date" class="form-control" value="<?= htmlspecialchars($lead['sheet_date']) ?>">
+        <input type="date" name="sheet_date" class="form-control" value="<?= htmlspecialchars($lead['sheet_date']) ?>">
       </div>
       <div class="form-group">
         <label>Time</label>
-        <input type="text" name="sheet_time" class="form-control" value="<?= htmlspecialchars($lead['sheet_time']) ?>">
+        <input type="time" name="sheet_time" class="form-control" value="<?= htmlspecialchars($lead['sheet_time']) ?>">
       </div>
     </div>
 
@@ -165,8 +195,14 @@ include __DIR__ . '/includes/header.php';
       <label>Comments</label>
       <textarea name="comments" class="form-control" rows="4"><?= htmlspecialchars($lead['comments']) ?></textarea>
     </div>
+    <div style="display:flex;gap:14px;align-items:center">
+      <button type="submit" class="btn btn-primary">💾 Save Changes</button>
+      <button type="button" class="btn btn-outline" style="border-color:var(--danger);color:var(--danger)" onclick="if(confirm('Move lead to Recycle Bin?')) document.getElementById('deleteForm').submit();">🗑️ Delete Lead</button>
+    </div>
+  </form>
 
-    <button type="submit" class="btn btn-primary">💾 Save Changes</button>
+  <form id="deleteForm" method="POST" style="display:none;">
+    <input type="hidden" name="action" value="delete">
   </form>
 </div>
 

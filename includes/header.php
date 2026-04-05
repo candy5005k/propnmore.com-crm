@@ -583,8 +583,8 @@ textarea.form-control { resize: vertical; min-height: 90px; }
 
 <nav class="sidebar">
   <div class="sidebar-logo">
-    <div class="name">LSR LEADS 2026</div>
-    <div class="sub">Propnmore CRM</div>
+    <div class="name" style="font-size:16px;line-height:1.2;margin-bottom:2px">LSR Lakshsiddh<br>Realty LLP</div>
+    <div class="sub" style="letter-spacing:1px;font-size:10px">By PROPNMORE</div>
   </div>
 
   <div class="nav-section">Leads</div>
@@ -594,6 +594,15 @@ textarea.form-control { resize: vertical; min-height: 90px; }
   <?php if ($user['role']==='admin'): ?>
   <a href="<?= BASE_URL ?>/leads_new.php" class="nav-item <?= $currentPage==='leads_new'?'active':'' ?>">
     <span class="icon">➕</span> Add Lead
+  </a>
+  <a href="<?= BASE_URL ?>/daily_activity.php" class="nav-item <?= $currentPage==='daily_activity'?'active':'' ?>">
+    <span class="icon">🌍</span> Live Activity
+  </a>
+  <a href="<?= BASE_URL ?>/import_leads.php" class="nav-item <?= $currentPage==='import_leads'?'active':'' ?>">
+    <span class="icon">📥</span> Offline Leads
+  </a>
+  <a href="<?= BASE_URL ?>/recycle_bin.php" class="nav-item <?= $currentPage==='recycle_bin'?'active':'' ?>">
+    <span class="icon">🗑️</span> Recycle Bin
   </a>
   <?php endif; ?>
 
@@ -610,13 +619,7 @@ textarea.form-control { resize: vertical; min-height: 90px; }
   </a>
   <?php endif; ?>
 
-  <?php if ($user['role']==='admin'): ?>
-  <div class="nav-section">Quick Links</div>
-  <a href="<?= htmlspecialchars($googleSheetUrl) ?>" target="_blank" rel="noopener" class="nav-item nav-item-sheet" id="btn-open-gsheet">
-    <span class="icon">📊</span> Open Google Sheet
-  </a>
 
-  <?php endif; ?>
 
   <?php if ($user['role']==='admin'): ?>
   <div class="nav-section">Admin</div>
@@ -703,9 +706,9 @@ textarea.form-control { resize: vertical; min-height: 90px; }
       </div>
 
       <?php if ($user['role']==='admin'): ?>
-        <span class="badge-pill">🛡 Admin</span>
+        <a href="<?= BASE_URL ?>/admin_users.php" style="text-decoration:none"><span class="badge-pill" style="cursor:pointer" title="Edit Profile">🛡 <?= htmlspecialchars($user['name']) ?></span></a>
       <?php else: ?>
-        <span class="badge-pill">👤 Sales Manager</span>
+        <span class="badge-pill">👤 <?= htmlspecialchars($user['name']) ?></span>
       <?php endif; ?>
     </div>
   </div>

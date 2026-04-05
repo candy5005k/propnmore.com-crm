@@ -6,7 +6,7 @@ $pageTitle = 'All Leads';
 $pdo = db();
 
 // ── Filters ──────────────────────────────────────────────────────────────────
-$where  = ['1=1'];
+$where  = ['l.is_deleted = 0'];
 $params = [];
 
 $source = $_GET['source'] ?? '';
@@ -73,8 +73,9 @@ $stats = $pdo->query("SELECT
     SUM(lead_type='cold') AS cold,
     SUM(lead_status='sv_pending') AS svp,
     SUM(lead_status='sv_done') AS svd,
-    SUM(lead_status='closed') AS closed
-    FROM leads")->fetch();
+    SUM(lead_status='closed') AS closed,
+    SUM(lead_status='spam') AS spam
+    FROM leads WHERE is_deleted = 0")->fetch();
 
 // ── Dropdown data ─────────────────────────────────────────────────────────────
 $projects     = $pdo->query('SELECT id,name FROM projects ORDER BY name')->fetchAll();
@@ -107,7 +108,7 @@ include __DIR__ . '/includes/header.php';
   </div>
 </div>
 
-<div class="grid-3" style="margin-bottom:24px">
+<div class="grid-4" style="margin-bottom:24px">
   <div class="stat-card">
     <div class="stat-label" style="color:#c084fc">📍 SV Pending</div>
     <div class="stat-value"><?= $stats['svp'] ?></div>
@@ -119,6 +120,10 @@ include __DIR__ . '/includes/header.php';
   <div class="stat-card">
     <div class="stat-label">🔒 Closed</div>
     <div class="stat-value"><?= $stats['closed'] ?></div>
+  </div>
+  <div class="stat-card" style="border-color:rgba(239,68,68,0.3)">
+    <div class="stat-label" style="color:#ef4444">🗑️ Spam</div>
+    <div class="stat-value" style="color:#ef4444"><?= $stats['spam'] ?: 0 ?></div>
   </div>
 </div>
 
@@ -146,10 +151,11 @@ include __DIR__ . '/includes/header.php';
     <div style="min-width:160px">
       <label style="display:block;font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--text2);margin-bottom:5px">Status</label>
       <select name="status" class="form-control" style="margin:0">
-        <option value="">All Status</option>
+        <option value="">All Statuses</option>
         <option value="sv_pending" <?= $status==='sv_pending'?'selected':'' ?>>SV Pending</option>
         <option value="sv_done"    <?= $status==='sv_done'?'selected':'' ?>>SV Done</option>
         <option value="closed"     <?= $status==='closed'?'selected':'' ?>>Closed</option>
+        <option value="spam"       <?= $status==='spam'?'selected':'' ?>>Spam/Junk</option>
       </select>
     </div>
 
@@ -251,15 +257,16 @@ include __DIR__ . '/includes/header.php';
           </span>
         </td>
         <td>
-          <span class="badge <?= match($l['lead_status']) { 'sv_pending'=>'badge-svp', 'sv_done'=>'badge-svd', 'closed'=>'badge-closed', default=>'' } ?>">
-            <?= match($l['lead_status']) { 'sv_pending'=>'SV Pending', 'sv_done'=>'SV Done', 'closed'=>'Closed', default=>$l['lead_status'] } ?>
+          <span class="badge <?= match($l['lead_status']) { 'sv_pending'=>'badge-svp', 'sv_done'=>'badge-svd', 'closed'=>'badge-closed', 'spam'=>'badge-danger', default=>'' } ?>"
+                <?= $l['lead_status']==='spam'?'style="background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.2)"':'' ?>>
+            <?= match($l['lead_status']) { 'sv_pending'=>'SV Pending', 'sv_done'=>'SV Done', 'closed'=>'Closed', 'spam'=>'Spam/Junk', default=>$l['lead_status'] } ?>
           </span>
         </td>
         <td><?= $l['assigned_name'] ? htmlspecialchars($l['assigned_name']) : '<span style="color:var(--text2)">—</span>' ?></td>
         <td>
-          <?php if ($l['followup_count'] > 0): ?>
+          <?php if ($l['call_count'] > 0): ?>
             <span style="background:rgba(var(--accentRGB),0.15);color:var(--accent);border-radius:20px;padding:2px 9px;font-size:11px;font-weight:700">
-              <?= $l['followup_count'] ?> calls
+              <?= $l['call_count'] ?> calls
             </span>
           <?php else: ?>
             <span style="color:var(--text2);font-size:12px">0</span>

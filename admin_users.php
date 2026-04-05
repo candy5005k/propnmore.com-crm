@@ -28,6 +28,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['action']) && $_POST['ac
     $name  = trim($_POST['name']  ?? '');
     $email = strtolower(trim($_POST['email'] ?? ''));
     $pass  = $_POST['password'] ?? '';
+    $smobile = preg_replace('/\D/', '', trim($_POST['mobile'] ?? ''));
     $role  = $_POST['role'] === 'admin' ? 'admin' : 'sales_manager';
 
     if (!$name || !$email || !$pass) {
@@ -41,23 +42,29 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['action']) && $_POST['ac
             $error = 'Email already exists.';
         } else {
             $hash = password_hash($pass, PASSWORD_BCRYPT, ['cost'=>12]);
-            $pdo->prepare('INSERT INTO users (name,email,password,role,is_active) VALUES (?,?,?,?,1)')
-                ->execute([$name, $email, $hash, $role]);
+            $pdo->prepare('INSERT INTO users (name,email,password,role,mobile,is_active) VALUES (?,?,?,?,?,1)')
+                ->execute([$name, $email, $hash, $role, $smobile]);
             $success = 'User created and activated.';
         }
     }
 }
 
-// Edit permissions (reset password)
+// Edit permissions (reset password / update mobile)
 if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['action']) && $_POST['action']==='reset_pw') {
-    $uid  = (int)$_POST['uid'];
-    $pass = $_POST['new_password'] ?? '';
-    if (strlen($pass) >= 8) {
+    $uid   = (int)$_POST['uid'];
+    $pass  = $_POST['new_password'] ?? '';
+    $upMob = preg_replace('/\D/', '', trim($_POST['update_mobile'] ?? ''));
+    if ($upMob) {
+        $pdo->prepare('UPDATE users SET mobile=? WHERE id=?')->execute([$upMob, $uid]);
+    }
+    if ($pass && strlen($pass) >= 8) {
         $hash = password_hash($pass, PASSWORD_BCRYPT, ['cost'=>12]);
         $pdo->prepare('UPDATE users SET password=? WHERE id=?')->execute([$hash, $uid]);
-        $success = 'Password updated.';
+        $success = 'Password' . ($upMob ? ' & Mobile' : '') . ' updated.';
+    } elseif ($upMob) {
+        $success = 'Mobile number updated.';
     } else {
-        $error = 'Password must be 8+ characters.';
+        $error = 'Please provide a new password (8+ chars) or a mobile number.';
     }
 }
 
@@ -82,6 +89,7 @@ include __DIR__ . '/includes/header.php';
       <tr>
         <th>Name</th>
         <th>Email</th>
+        <th>Mobile (SMS)</th>
         <th>Role</th>
         <th>Status</th>
         <th>Leads</th>
@@ -100,6 +108,13 @@ include __DIR__ . '/includes/header.php';
           </div>
         </td>
         <td style="font-size:13px;color:var(--text2)"><?= htmlspecialchars($u['email']) ?></td>
+        <td style="font-size:13px;color:var(--text2)">
+          <?php if ($u['mobile']): ?>
+            <a href="tel:<?= htmlspecialchars($u['mobile']) ?>" style="color:var(--accent);text-decoration:none;font-family:monospace"><?= htmlspecialchars($u['mobile']) ?></a>
+          <?php else: ?>
+            <span style="color:var(--text2);font-size:11px">No mobile set</span>
+          <?php endif; ?>
+        </td>
         <td>
           <span class="badge <?= $u['role']==='admin'?'badge-hot':'badge-cold' ?>">
             <?= $u['role']==='admin'?'🛡 Admin':'👤 Sales Manager' ?>
@@ -144,20 +159,26 @@ include __DIR__ . '/includes/header.php';
 
           <!-- Password reset modal per user -->
           <div class="modal-bg" id="pw<?= $u['id'] ?>">
-            <div class="modal" style="max-width:380px">
+            <div class="modal" style="max-width:420px">
               <div class="modal-header">
-                <span class="modal-title">Reset Password</span>
+                <span class="modal-title">Edit <?= htmlspecialchars($u['name']) ?></span>
                 <button class="modal-close" onclick="closeModal('pw<?= $u['id'] ?>')">×</button>
               </div>
-              <p style="color:var(--text2);font-size:13px;margin-bottom:18px">Setting new password for <strong><?= htmlspecialchars($u['name']) ?></strong></p>
+              <p style="color:var(--text2);font-size:13px;margin-bottom:18px">Update password and/or SMS mobile number.</p>
               <form method="POST">
                 <input type="hidden" name="action" value="reset_pw">
                 <input type="hidden" name="uid" value="<?= $u['id'] ?>">
                 <div class="form-group">
-                  <label>New Password</label>
-                  <input type="password" name="new_password" class="form-control" placeholder="Min 8 characters" required>
+                  <label>Mobile Number for SMS Alerts</label>
+                  <input type="text" name="update_mobile" class="form-control"
+                         value="<?= htmlspecialchars($u['mobile'] ?? '') ?>"
+                         placeholder="10-digit mobile e.g. 9876543210">
                 </div>
-                <button type="submit" class="btn btn-primary" style="width:100%">Update Password</button>
+                <div class="form-group">
+                  <label>New Password <span style="color:var(--text2);font-size:11px">(leave blank to keep current)</span></label>
+                  <input type="password" name="new_password" class="form-control" placeholder="Min 8 characters">
+                </div>
+                <button type="submit" class="btn btn-primary" style="width:100%">Save Changes</button>
               </form>
             </div>
           </div>
@@ -193,6 +214,10 @@ include __DIR__ . '/includes/header.php';
       <div class="form-group">
         <label>Email</label>
         <input type="email" name="email" class="form-control" required>
+      </div>
+      <div class="form-group">
+        <label>Mobile Number <span style="color:var(--text2);font-size:11px">(for SMS lead alerts)</span></label>
+        <input type="text" name="mobile" class="form-control" placeholder="10-digit mobile e.g. 9876543210">
       </div>
       <div class="form-group">
         <label>Password</label>

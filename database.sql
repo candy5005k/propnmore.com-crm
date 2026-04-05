@@ -9,6 +9,7 @@ CREATE TABLE users (
     email VARCHAR(100) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
     role ENUM('admin','sales_manager') DEFAULT 'sales_manager',
+    mobile VARCHAR(20),                  -- Sales Manager mobile for SMS alerts
     is_active TINYINT(1) DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -53,7 +54,7 @@ CREATE TABLE leads (
     email VARCHAR(150),
     preference TEXT,
     lead_type ENUM('hot','warm','cold') DEFAULT 'warm',
-    lead_status ENUM('sv_pending','sv_done','closed') DEFAULT 'sv_pending',
+    lead_status ENUM('sv_pending','sv_done','closed','spam') DEFAULT 'sv_pending',
     assigned_to INT,                     -- FK to users
     comments TEXT,
     audio_file VARCHAR(255),

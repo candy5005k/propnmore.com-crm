@@ -30,7 +30,26 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['action']) && $_POST['ac
     if ($comment) {
         $pdo->prepare('UPDATE leads SET comments=? WHERE id=?')->execute([$comment, $id]);
         $lead['comments'] = $comment;
+        $pdo->prepare('INSERT INTO followups (lead_id,user_id,call_response) VALUES (?,?,?)')->execute([$id, $user['id'], "[💬 COMMENT] " . $comment]);
         $success = 'Comment saved.';
+    }
+}
+
+// ── Handle: increment call manually ───────────────────────────────────────────
+if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['action']) && $_POST['action']==='increment_call') {
+    $pdo->prepare('UPDATE leads SET call_count=call_count+1 WHERE id=?')->execute([$id]);
+    $lead['call_count']++;
+    $pdo->prepare('INSERT INTO followups (lead_id,user_id,call_response) VALUES (?,?,?)')->execute([$id, $user['id'], "[📞 INCREMENT] Call count manually incremented."]);
+    $success = 'Call count incremented.';
+}
+
+// ── Handle: decrement call manually ───────────────────────────────────────────
+if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['action']) && $_POST['action']==='decrement_call') {
+    if ($lead['call_count'] > 0) {
+        $pdo->prepare('UPDATE leads SET call_count=call_count-1 WHERE id=?')->execute([$id]);
+        $lead['call_count']--;
+        $pdo->prepare('INSERT INTO followups (lead_id,user_id,call_response) VALUES (?,?,?)')->execute([$id, $user['id'], "[📉 DECREMENT] Call count manually decreased."]);
+        $success = 'Call count decreased.';
     }
 }
 
@@ -65,6 +84,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['action']) && $_POST['ac
                 }
                 $pdo->prepare('UPDATE leads SET audio_file=? WHERE id=?')->execute([$filename, $id]);
                 $lead['audio_file'] = $filename;
+                $pdo->prepare('INSERT INTO followups (lead_id,user_id,call_response) VALUES (?,?,?)')->execute([$id, $user['id'], "[🎙️ RECORDING] " . $filename]);
                 $success = 'Audio recording uploaded.';
             } else {
                 $error = 'Upload failed. Check folder permissions.';
@@ -73,10 +93,14 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['action']) && $_POST['ac
     }
 }
 
-// ── Handle: assign / update quick fields (admin only) ────────────────────────
-if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['action']) && $_POST['action']==='update' && $user['role']==='admin') {
+// ── Handle: assign / update quick fields ────────────────────────
+if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['action']) && $_POST['action']==='update') {
     $oldAssigned = (int)$lead['assigned_to'];
-    $fields = ['lead_type','lead_status','assigned_to','project_id'];
+    $fields = ['lead_type','lead_status'];
+    if ($user['role'] === 'admin') {
+        $fields[] = 'assigned_to';
+        $fields[] = 'project_id';
+    }
     $sets   = [];
     $vals   = [];
     foreach ($fields as $f) {
@@ -88,6 +112,17 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['action']) && $_POST['ac
         // Refresh
         $st->execute([$id]);
         $lead = $st->fetch();
+        
+        $changeNote = "Lead meta fields updated.";
+        $n_status = $_POST['lead_status'] ?? '';
+        if ($n_status !== $lead['lead_status']) {
+            $changeNote .= ($changeNote ? ', ' : '') . "Status: {$lead['lead_status']} → {$n_status}";
+            if ($n_status === 'spam' && !empty($_POST['spam_note'])) {
+                $changeNote .= " | Spam Reason: " . trim($_POST['spam_note']);
+            }
+        }
+        
+        $pdo->prepare('INSERT INTO followups (lead_id,user_id,call_response) VALUES (?,?,?)')->execute([$id, $user['id'], "[⚙️ UPDATE] " . $changeNote]);
         $success = 'Lead updated.';
 
         // ★ Point 11: Send notification to newly assigned sales manager
@@ -109,8 +144,8 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['action']) && $_POST['ac
                 'lead_assigned'
             );
 
-            // ★ Email notification to sales manager
-            $smData = $pdo->prepare('SELECT name, email FROM users WHERE id=?');
+            // ★ Email + SMS notification to sales manager
+            $smData = $pdo->prepare('SELECT name, email, mobile FROM users WHERE id=?');
             $smData->execute([$newAssigned]);
             $smInfo = $smData->fetch();
 
@@ -204,6 +239,16 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['action']) && $_POST['ac
                 } else {
                     error_log("CRM: ❌ Failed to send assignment email to {$smEmail}");
                 }
+
+                // ★ SMS alert to sales manager (via Fast2SMS)
+                $smMobile = $smInfo['mobile'] ?? '';
+                if ($smMobile) {
+                    $smsText = "LSR CRM: New lead - {$leadName}, Ph: {$leadMobile}, Project: {$projectName}. Login: crm.propnmore.com";
+                    $smsSent = sendSMS($smMobile, $smsText);
+                    error_log("CRM: SMS to SM {$smMobile} for lead #{$id} — " . ($smsSent ? '✅ sent' : '❌ failed'));
+                } else {
+                    error_log("CRM: ⚠️ No mobile set for SM #{$newAssigned} — SMS skipped.");
+                }
             }
         }
     }
@@ -222,7 +267,7 @@ include __DIR__ . '/includes/header.php';
 ?>
 
 <div style="display:flex;align-items:center;gap:14px;margin-bottom:24px;flex-wrap:wrap">
-  <a href="<?= BASE_URL ?>/index.php" class="btn btn-outline btn-sm">← Back</a>
+  <a href="<?= BASE_URL ?>/index.php" id="btn-back" class="btn btn-outline btn-sm">← Back</a>
   <span class="badge badge-<?= $lead['source'] ?>"><?= ucfirst($lead['source']) ?></span>
   <span class="badge badge-<?= $lead['lead_type'] ?>">
     <?= match($lead['lead_type']) { 'hot'=>'🔥 Hot', 'warm'=>'☀️ Warm', 'cold'=>'❄️ Cold', default=>'' } ?>
@@ -234,6 +279,7 @@ include __DIR__ . '/includes/header.php';
     <a href="<?= BASE_URL ?>/lead_edit.php?id=<?= $id ?>" class="btn btn-primary btn-sm" style="margin-left:auto">✏️ Edit Lead</a>
   <?php endif; ?>
 </div>
+
 
 <?php if ($error): ?><div class="alert alert-error"><?= htmlspecialchars($error) ?></div><?php endif; ?>
 <?php if ($success): ?><div class="alert alert-success"><?= htmlspecialchars($success) ?></div><?php endif; ?>
@@ -258,10 +304,26 @@ include __DIR__ . '/includes/header.php';
           ['🔗 URL',      $lead['page_url'] ? substr($lead['page_url'],0,50).'…' : ''],
           ['👤 Assigned', $lead['assigned_name'] ?? 'Unassigned'],
           ['📞 Call Count', $lead['call_count'] . ' calls placed'],
-        ]; foreach ($info as [$k,$v]): if (!$v) continue; ?>
-        <div style="background:var(--bg);border-radius:10px;padding:12px 16px">
-          <div style="font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--text2);margin-bottom:4px"><?= $k ?></div>
-          <div style="font-size:14px;color:var(--text)"><?= htmlspecialchars($v) ?></div>
+        ]; foreach ($info as [$k,$v]): if (!$v && $k !== '📞 Call Count') continue; ?>
+        <div style="background:var(--bg);border-radius:10px;padding:12px 16px; <?php if($k === '📞 Call Count') echo 'display:flex;align-items:center;justify-content:space-between'; ?>">
+          <div>
+            <div style="font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--text2);margin-bottom:4px"><?= $k ?></div>
+            <div style="font-size:14px;color:var(--text)"><?= htmlspecialchars($v) ?></div>
+          </div>
+          <?php if ($k === '📞 Call Count'): ?>
+          <div style="display:flex;gap:6px">
+            <?php if($lead['call_count'] > 0): ?>
+            <form method="POST" style="margin:0">
+               <input type="hidden" name="action" value="decrement_call">
+               <button type="submit" style="background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.3);border-radius:6px;width:30px;height:30px;font-size:18px;font-weight:bold;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.2s" onmouseover="this.style.background='rgba(239,68,68,0.2)'" onmouseout="this.style.background='rgba(239,68,68,0.1)'" title="Decrease Call Count">-</button>
+            </form>
+            <?php endif; ?>
+            <form method="POST" style="margin:0">
+               <input type="hidden" name="action" value="increment_call">
+               <button type="submit" style="background:rgba(16,185,129,0.1);color:#10b981;border:1px solid rgba(16,185,129,0.3);border-radius:6px;width:30px;height:30px;font-size:18px;font-weight:bold;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.2s" onmouseover="this.style.background='rgba(16,185,129,0.2)'" onmouseout="this.style.background='rgba(16,185,129,0.1)'" title="Increase Call Count">+</button>
+            </form>
+          </div>
+          <?php endif; ?>
         </div>
         <?php endforeach; ?>
       </div>
@@ -400,7 +462,7 @@ include __DIR__ . '/includes/header.php';
   <!-- Right column -->
   <div style="display:flex;flex-direction:column;gap:18px">
 
-    <?php if ($user['role']==='admin'): ?>
+
     <!-- Quick update -->
     <div class="card">
       <div style="font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text2);margin-bottom:14px">⚙️ Update Lead</div>
@@ -418,13 +480,28 @@ include __DIR__ . '/includes/header.php';
 
         <div class="form-group">
           <label>Lead Status</label>
-          <select name="lead_status" class="form-control">
+          <select name="lead_status" class="form-control" id="leadStatusSelect">
             <option value="sv_pending" <?= $lead['lead_status']==='sv_pending'?'selected':'' ?>>SV Pending</option>
             <option value="sv_done"    <?= $lead['lead_status']==='sv_done'?'selected':'' ?>>SV Done</option>
             <option value="closed"     <?= $lead['lead_status']==='closed'?'selected':'' ?>>Closed</option>
+            <option value="spam"       <?= $lead['lead_status']==='spam'?'selected':'' ?>>Spam (Junk/Fake)</option>
           </select>
         </div>
+        
+        <div id="spamNoteWrap" style="display:none;margin-bottom:16px;">
+            <label style="display:block;font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#ef4444;margin-bottom:6px">Spam Details/Note</label>
+            <textarea name="spam_note" class="form-control" rows="2" placeholder="Why is this spam? (Both Admin and SM will see this)"></textarea>
+        </div>
+        <script>
+        document.getElementById('leadStatusSelect').addEventListener('change', function(){
+            document.getElementById('spamNoteWrap').style.display = (this.value === 'spam') ? 'block' : 'none';
+        });
+        if(document.getElementById('leadStatusSelect').value === 'spam') {
+            document.getElementById('spamNoteWrap').style.display = 'block';
+        }
+        </script>
 
+        <?php if ($user['role']==='admin'): ?>
         <div class="form-group">
           <label>Assign To</label>
           <select name="assigned_to" class="form-control">
@@ -444,33 +521,61 @@ include __DIR__ . '/includes/header.php';
             <?php endforeach; ?>
           </select>
         </div>
+        <?php endif; ?>
 
         <button type="submit" class="btn btn-primary" style="width:100%">Update Lead</button>
       </form>
     </div>
-    <?php endif; ?>
 
-    <!-- Follow-up history -->
+    <!-- Activity Timeline -->
     <div class="card">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-        <div style="font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text2)">📊 Follow-up History</div>
+        <div style="font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text2)">📊 Activity Timeline</div>
         <span style="background:rgba(var(--accentRGB),0.15);color:var(--accent);border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700">
-          <?= count($followups) ?> call<?= count($followups)!=1?'s':'' ?>
+          <?= count($followups) ?> action<?= count($followups)!=1?'s':'' ?>
         </span>
       </div>
 
       <?php if (empty($followups)): ?>
-        <div style="color:var(--text2);font-size:13px;text-align:center;padding:20px 0">No follow-ups yet.</div>
+        <div style="color:var(--text2);font-size:13px;text-align:center;padding:20px 0">No activity logged yet.</div>
       <?php endif; ?>
 
       <div style="display:flex;flex-direction:column;gap:10px">
-        <?php foreach ($followups as $i => $f): ?>
-        <div style="background:var(--bg);border-radius:10px;padding:12px 14px;border-left:3px solid var(--accent)">
+        <?php foreach ($followups as $i => $f): 
+          $text = $f['call_response'];
+          $htmlContent = '';
+          if (strpos($text, '[💬 COMMENT] ') === 0) {
+              $bgColor = 'rgba(245,158,11,0.08)'; $bColor = '#f59e0b'; $tLeft = '💬 Comment Logged'; $tColor = '#fbbf24';
+              $text = substr($text, 13);
+              $htmlContent = nl2br(htmlspecialchars($text));
+          } elseif (strpos($text, '[🎙️ RECORDING] ') === 0) {
+              $bgColor = 'rgba(168,85,247,0.08)'; $bColor = '#c084fc'; $tLeft = '🎙️ Audio Uploaded'; $tColor = '#c084fc';
+              $text = substr($text, 16);
+              $fileUrl = BASE_URL . '/assets/uploads/audio/' . htmlspecialchars($text);
+              $htmlContent = '<audio controls style="width:100%;height:32px;outline:none;margin-top:4px;border-radius:6px"><source src="'.$fileUrl.'"></audio><div style="font-size:10px;margin-top:4px;color:var(--text2)">'.htmlspecialchars($text).'</div>';
+          } elseif (strpos($text, '[⚙️ UPDATE] ') === 0) {
+              $bgColor = 'rgba(59,130,246,0.08)'; $bColor = '#60a5fa'; $tLeft = '⚙️ Lead Updated'; $tColor = '#60a5fa';
+              $text = substr($text, 12);
+              $htmlContent = nl2br(htmlspecialchars($text));
+          } elseif (strpos($text, '[📞 INCREMENT] ') === 0) {
+              $bgColor = 'rgba(16,185,129,0.08)'; $bColor = '#10b981'; $tLeft = '📞 Called (Count Incremented)'; $tColor = '#10b981';
+              $text = substr($text, 15);
+              $htmlContent = nl2br(htmlspecialchars($text));
+          } elseif (strpos($text, '[📉 DECREMENT] ') === 0) {
+              $bgColor = 'rgba(239,68,68,0.08)'; $bColor = '#ef4444'; $tLeft = '📉 Call Decreased'; $tColor = '#ef4444';
+              $text = substr($text, 15);
+              $htmlContent = nl2br(htmlspecialchars($text));
+          } else {
+              $bgColor = 'var(--bg)'; $bColor = 'var(--accent)'; $tLeft = '📞 Call Logged'; $tColor = 'var(--accent)';
+              $htmlContent = nl2br(htmlspecialchars($text));
+          }
+        ?>
+        <div style="background:<?= $bgColor ?>;border-radius:10px;padding:12px 14px;border-left:3px solid <?= $bColor ?>">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-            <span style="font-size:11px;font-weight:700;color:var(--accent)">Call #<?= count($followups) - $i ?></span>
+            <span style="font-size:11px;font-weight:700;color:<?= $tColor ?>"><?= $tLeft ?></span>
             <span style="font-size:11px;color:var(--text2)"><?= date('d M Y, H:i', strtotime($f['created_at'])) ?></span>
           </div>
-          <div style="font-size:13px;color:var(--text);line-height:1.5"><?= nl2br(htmlspecialchars($f['call_response'])) ?></div>
+          <div style="font-size:13px;color:var(--text);line-height:1.5"><?= $htmlContent ?></div>
           <div style="margin-top:6px;font-size:11px;color:var(--text2)">
             By <?= htmlspecialchars($f['by_name']) ?>
             <?php if ($f['next_followup']): ?>
