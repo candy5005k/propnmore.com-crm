@@ -58,6 +58,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $PAGE_ID = '387375521120468';
         $TOKEN   = defined('META_PAGE_ACCESS_TOKEN') ? META_PAGE_ACCESS_TOKEN : '';
 
+        // Date range for filtering (Facebook defaults to 90 days; we override)
+        $syncFrom = $_POST['meta_sync_from'] ?? '2020-01-01';
+        $syncTo   = $_POST['meta_sync_to']   ?? date('Y-m-d');
+        $tsFrom   = strtotime($syncFrom . ' 00:00:00');
+        $tsTo     = strtotime($syncTo   . ' 23:59:59');
+
         if (!$TOKEN) {
             $error = 'META_PAGE_ACCESS_TOKEN not configured.';
         } else {
@@ -68,7 +74,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 foreach ($forms['data'] as $form) {
                     $formId   = $form['id'];
                     $formName = $form['name'] ?? 'Unknown Form';
-                    $leadsUrl = "https://graph.facebook.com/v21.0/{$formId}/leads?fields=id,created_time,field_data&limit=500&access_token={$TOKEN}";
+                    // Apply date filtering to get ALL leads, not just last 90 days
+                    $filtering = urlencode(json_encode([
+                        ['field' => 'time_created', 'operator' => 'GREATER_THAN', 'value' => $tsFrom],
+                        ['field' => 'time_created', 'operator' => 'LESS_THAN',    'value' => $tsTo],
+                    ]));
+                    $leadsUrl = "https://graph.facebook.com/v21.0/{$formId}/leads?fields=id,created_time,field_data&filtering={$filtering}&limit=500&access_token={$TOKEN}";
 
                     while ($leadsUrl) {
                         $leadsResp = metaCurl($leadsUrl);
@@ -204,8 +215,21 @@ include __DIR__ . '/includes/header.php';
   <div class="card" style="margin-top:20px;border-color:rgba(59,130,246,0.25)">
     <form method="POST">
       <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#60a5fa;margin-bottom:12px">📱 Facebook Meta API Sync</div>
-      <p style="color:var(--text2);font-size:13px;margin-bottom:16px">Pull leads directly from Facebook Lead Forms API. Fetches all form answers, campaign names. Duplicates auto-skipped.</p>
-      <button type="submit" name="sync_type" value="meta_api" class="btn btn-primary" style="width:100%;background:linear-gradient(135deg,#3b82f6,#60a5fa);color:#fff">📥 Sync Meta Leads from Facebook</button>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:16px">Pull leads directly from Facebook Lead Forms API — from any date range. Fetches all form answers, campaign names. Duplicates auto-skipped.</p>
+      
+      <div style="display:flex;gap:14px;margin-bottom:18px;flex-wrap:wrap;align-items:flex-end;">
+        <div style="flex:1;min-width:150px;">
+          <label style="display:block;font-size:11px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:#8a9ab8;margin-bottom:5px;font-family:'Inter',sans-serif;">From Date</label>
+          <input type="date" name="meta_sync_from" value="2020-01-01" class="form-control" style="margin:0;">
+        </div>
+        <div style="flex:1;min-width:150px;">
+          <label style="display:block;font-size:11px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:#8a9ab8;margin-bottom:5px;font-family:'Inter',sans-serif;">To Date</label>
+          <input type="date" name="meta_sync_to" value="<?= date('Y-m-d') ?>" class="form-control" style="margin:0;">
+        </div>
+      </div>
+      <p style="color:#60a5fa;font-size:11px;margin-bottom:14px;opacity:0.8;">💡 Facebook only returns last 90 days by default. Set an earlier "From Date" (e.g. 2020-01-01) to fetch ALL historical leads.</p>
+      
+      <button type="submit" name="sync_type" value="meta_api" class="btn btn-primary" style="width:100%;background:linear-gradient(135deg,#3b82f6,#60a5fa);color:#fff">📥 Sync All Meta Leads from Facebook</button>
     </form>
   </div>
 

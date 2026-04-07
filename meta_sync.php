@@ -17,6 +17,11 @@ $synced  = 0;
 $skipped = 0;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $TOKEN) {
+    // Date range for filtering (Facebook defaults to 90 days; we override)
+    $syncFrom = $_POST['sync_from'] ?? '2020-01-01';
+    $syncTo   = $_POST['sync_to']   ?? date('Y-m-d');
+    $tsFrom   = strtotime($syncFrom . ' 00:00:00');
+    $tsTo     = strtotime($syncTo   . ' 23:59:59');
     // Step 1: Get all lead forms from Page
     $forms = curlGet("https://graph.facebook.com/v21.0/{$PAGE_ID}/leadgen_forms?fields=id,name,status&limit=50&access_token={$TOKEN}");
 
@@ -30,7 +35,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $TOKEN) {
             $formName = $form['name'] ?? 'Unknown Form';
 
             // Step 2: Fetch all leads from each form
-            $leadsUrl = "https://graph.facebook.com/v21.0/{$formId}/leads?fields=id,created_time,field_data,ad_id,campaign_id&limit=500&access_token={$TOKEN}";
+            // Apply date filtering to get ALL leads, not just last 90 days
+            $filtering = urlencode(json_encode([
+                ['field' => 'time_created', 'operator' => 'GREATER_THAN', 'value' => $tsFrom],
+                ['field' => 'time_created', 'operator' => 'LESS_THAN',    'value' => $tsTo],
+            ]));
+            $leadsUrl = "https://graph.facebook.com/v21.0/{$formId}/leads?fields=id,created_time,field_data,ad_id,campaign_id&filtering={$filtering}&limit=500&access_token={$TOKEN}";
 
             while ($leadsUrl) {
                 $leadsResp = curlGet($leadsUrl);
@@ -154,12 +164,28 @@ include __DIR__ . '/includes/header.php';
 <div class="card" style="padding:32px;text-align:center">
     <div style="font-size:48px;margin-bottom:16px">📥</div>
     <h3 style="margin-bottom:8px">Fetch All Meta Leads</h3>
-    <p style="color:var(--text2);margin-bottom:24px">This will pull ALL leads from your Facebook Page's lead forms.<br>Duplicates are automatically skipped.</p>
+    <p style="color:var(--text2);margin-bottom:24px">Pull ALL leads from your Facebook Page's lead forms — from the very beginning to today.<br>Duplicates are automatically skipped.</p>
     <form method="POST">
         <input type="hidden" name="_csrf" value="<?= csrf() ?>">
+        
+        <div style="display:flex;gap:16px;justify-content:center;align-items:flex-end;margin-bottom:24px;flex-wrap:wrap;">
+            <div style="text-align:left;">
+                <label class="flbl" style="display:block;font-size:11px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:#8a9ab8;margin-bottom:5px;font-family:'Inter',sans-serif;">From Date</label>
+                <input type="date" name="sync_from" value="2020-01-01" class="form-control" style="margin:0;min-width:170px;">
+            </div>
+            <div style="text-align:left;">
+                <label class="flbl" style="display:block;font-size:11px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:#8a9ab8;margin-bottom:5px;font-family:'Inter',sans-serif;">To Date</label>
+                <input type="date" name="sync_to" value="<?= date('Y-m-d') ?>" class="form-control" style="margin:0;min-width:170px;">
+            </div>
+        </div>
+        
         <button type="submit" class="btn btn-primary" style="padding:14px 40px;font-size:16px">
             🔄 Sync All Meta Leads Now
         </button>
+        
+        <p style="color:var(--text2);font-size:12px;margin-top:12px">
+            <strong>Tip:</strong> Set "From Date" to an earlier date (e.g., 2020-01-01) to fetch historical leads that Facebook's 90-day default window may have missed.
+        </p>
     </form>
     <p style="color:var(--text2);font-size:12px;margin-top:16px">Page: Lakshsiddh Ventures (ID: <?= $PAGE_ID ?>)</p>
 </div>
