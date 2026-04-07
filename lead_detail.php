@@ -39,7 +39,6 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['action']) && $_POST['ac
 if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['action']) && $_POST['action']==='increment_call') {
     $pdo->prepare('UPDATE leads SET call_count=call_count+1 WHERE id=?')->execute([$id]);
     $lead['call_count']++;
-    $pdo->prepare('INSERT INTO followups (lead_id,user_id,call_response) VALUES (?,?,?)')->execute([$id, $user['id'], "[📞 INCREMENT] Call count manually incremented."]);
     $success = 'Call count incremented.';
 }
 
@@ -48,7 +47,6 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['action']) && $_POST['ac
     if ($lead['call_count'] > 0) {
         $pdo->prepare('UPDATE leads SET call_count=call_count-1 WHERE id=?')->execute([$id]);
         $lead['call_count']--;
-        $pdo->prepare('INSERT INTO followups (lead_id,user_id,call_response) VALUES (?,?,?)')->execute([$id, $user['id'], "[📉 DECREMENT] Call count manually decreased."]);
         $success = 'Call count decreased.';
     }
 }
