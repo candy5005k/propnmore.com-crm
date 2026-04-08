@@ -5,10 +5,121 @@ $pageTitle = 'All Leads';
 
 $pdo = db();
 
+// ── Filters & Query Building ──────────────────────────────────────────────────
+$where  = ['l.is_deleted = 0'];
+$params = [];
+
+$source = $_GET['source'] ?? '';
+if ($source) { $where[] = 'l.source=?'; $params[] = $source; }
+
+$type = $_GET['type'] ?? '';
+if ($type) { $where[] = 'l.lead_type=?'; $params[] = $type; }
+
+$status = $_GET['status'] ?? '';
+if ($status) { $where[] = 'l.lead_status=?'; $params[] = $status; }
+
+$projectId = (int)($_GET['project'] ?? 0);
+if ($projectId) { $where[] = 'l.project_id=?'; $params[] = $projectId; }
+
+$assignedTo = (int)($_GET['assigned'] ?? 0);
+if ($assignedTo === -1) {
+    $where[] = '(l.assigned_to = 0 OR l.assigned_to IS NULL)';
+} elseif ($assignedTo === -2) {
+    $where[] = '(l.assigned_to IS NOT NULL AND l.assigned_to > 0)';
+} elseif ($assignedTo > 0) {
+    $where[] = 'l.assigned_to=?'; 
+    $params[] = $assignedTo;
+}
+
+$dateFilter = $_GET['date_filter'] ?? '';
+$dateFrom   = $_GET['date_from'] ?? '';
+$dateTo     = $_GET['date_to'] ?? '';
+
+if ($dateFilter === 'today') {
+    $where[] = '(DATE(l.created_at) = CURRENT_DATE())';
+} elseif ($dateFilter === 'yesterday') {
+    $where[] = '(DATE(l.created_at) = DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))';
+} elseif ($dateFilter === 'last_7') {
+    $where[] = '(l.created_at >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY))';
+} elseif ($dateFilter === 'last_14') {
+    $where[] = '(l.created_at >= DATE_SUB(CURRENT_DATE(), INTERVAL 14 DAY))';
+} elseif ($dateFilter === 'last_30') {
+    $where[] = '(l.created_at >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY))';
+} elseif ($dateFilter === 'this_week') {
+    $where[] = '(YEARWEEK(l.created_at, 1) = YEARWEEK(CURRENT_DATE(), 1))';
+} elseif ($dateFilter === 'this_month') {
+    $where[] = '(MONTH(l.created_at) = MONTH(CURRENT_DATE()) AND YEAR(l.created_at) = YEAR(CURRENT_DATE()))';
+} elseif ($dateFilter === '3_months') {
+    $where[] = '(l.created_at >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 MONTH))';
+} elseif ($dateFilter === 'custom' && $dateFrom && $dateTo) {
+    $where[] = '(DATE(l.created_at) >= ? AND DATE(l.created_at) <= ?)';
+    $params[] = $dateFrom;
+    $params[] = $dateTo;
+} elseif ($dateFilter === 'custom' && $dateFrom && !$dateTo) {
+    $where[] = '(DATE(l.created_at) >= ?)';
+    $params[] = $dateFrom;
+} elseif ($dateFilter === 'custom' && !$dateFrom && $dateTo) {
+    $where[] = '(DATE(l.created_at) <= ?)';
+    $params[] = $dateTo;
+}
+
+if ($user['role'] === 'sales_manager') {
+    $where[] = 'l.assigned_to=?';
+    $params[] = $user['id'];
+}
+
+$search = trim($_GET['q'] ?? '');
+if ($search) {
+    $where[]  = '(l.first_name LIKE ? OR l.last_name LIKE ? OR l.mobile LIKE ? OR l.email LIKE ?)';
+    $like = "%{$search}%";
+    array_push($params, $like, $like, $like, $like);
+}
+
+$whereStr = implode(' AND ', $where);
+
+// ── Export CSV Logic ─────────────────────────────────────────────────────────
+if (isset($_GET['export']) && $_GET['export'] === 'csv') {
+    ob_end_clean();
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename=CRM_Report_'.date('Ymd_His').'.csv');
+    $output = fopen('php://output', 'w');
+    fputcsv($output, ['ID', 'Name', 'Mobile', 'Email', 'Project', 'Source', 'Type', 'Status', 'Assigned To', 'Added On']);
+    
+    $sqlExport = "SELECT l.*, COALESCE(p.name, l.project_name) AS project_name, u.name as assigned_name 
+                  FROM leads l LEFT JOIN projects p ON l.project_id=p.id LEFT JOIN users u ON l.assigned_to=u.id 
+                  WHERE {$whereStr} ORDER BY l.created_at DESC";
+    $stExport = $pdo->prepare($sqlExport);
+    $stExport->execute($params);
+    
+    while ($row = $stExport->fetch(PDO::FETCH_ASSOC)) {
+        fputcsv($output, [
+            $row['id'],
+            $row['first_name'] . ' ' . $row['last_name'],
+            $row['mobile'],
+            $row['email'],
+            $row['project_name'],
+            urlencode(ucfirst($row['source'])),
+            ucfirst($row['lead_type']),
+            $row['lead_status'],
+            $row['assigned_name'] ?: 'Unassigned',
+            $row['created_at']
+        ]);
+    }
+    fclose($output);
+    exit;
+}
+
 // ── Handle Bulk Assignment ───────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'bulk_assign' && $user['role'] === 'admin') {
     $assignToId = (int)($_POST['bulk_assigned_to'] ?? 0);
     $leadIds = $_POST['lead_ids'] ?? [];
+    
+    // Check if Global Select All is used
+    if (isset($_POST['global_select']) && $_POST['global_select'] === '1') {
+        $stGlobal = $pdo->prepare("SELECT id FROM leads l WHERE {$whereStr}");
+        $stGlobal->execute($params);
+        $leadIds = $stGlobal->fetchAll(PDO::FETCH_COLUMN); // Override with ALL matching IDs
+    }
     
     if (($assignToId > 0 || $assignToId === -1) && is_array($leadIds) && count($leadIds) > 0) {
         try {
@@ -107,79 +218,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 }
 
-// ── Filters ──────────────────────────────────────────────────────────────────
-$where  = ['l.is_deleted = 0'];
-$params = [];
-
-$source = $_GET['source'] ?? '';
-if ($source) { $where[] = 'l.source=?'; $params[] = $source; }
-
-$type = $_GET['type'] ?? '';
-if ($type) { $where[] = 'l.lead_type=?'; $params[] = $type; }
-
-$status = $_GET['status'] ?? '';
-if ($status) { $where[] = 'l.lead_status=?'; $params[] = $status; }
-
-$projectId = (int)($_GET['project'] ?? 0);
-if ($projectId) { $where[] = 'l.project_id=?'; $params[] = $projectId; }
-
-$assignedTo = (int)($_GET['assigned'] ?? 0);
-if ($assignedTo === -1) {
-    $where[] = '(l.assigned_to = 0 OR l.assigned_to IS NULL)';
-} elseif ($assignedTo === -2) {
-    $where[] = '(l.assigned_to IS NOT NULL AND l.assigned_to > 0)';
-} elseif ($assignedTo > 0) {
-    $where[] = 'l.assigned_to=?'; 
-    $params[] = $assignedTo;
-}
-
-// Date filter — each condition is wrapped in parentheses to prevent SQL injection of AND/OR logic
-$dateFilter = $_GET['date_filter'] ?? '';
-$dateFrom   = $_GET['date_from'] ?? '';
-$dateTo     = $_GET['date_to'] ?? '';
-
-if ($dateFilter === 'today') {
-    $where[] = '(DATE(l.created_at) = CURRENT_DATE())';
-} elseif ($dateFilter === 'yesterday') {
-    $where[] = '(DATE(l.created_at) = DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))';
-} elseif ($dateFilter === 'last_7') {
-    $where[] = '(l.created_at >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY))';
-} elseif ($dateFilter === 'last_14') {
-    $where[] = '(l.created_at >= DATE_SUB(CURRENT_DATE(), INTERVAL 14 DAY))';
-} elseif ($dateFilter === 'last_30') {
-    $where[] = '(l.created_at >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY))';
-} elseif ($dateFilter === 'this_week') {
-    $where[] = '(YEARWEEK(l.created_at, 1) = YEARWEEK(CURRENT_DATE(), 1))';
-} elseif ($dateFilter === 'this_month') {
-    $where[] = '(MONTH(l.created_at) = MONTH(CURRENT_DATE()) AND YEAR(l.created_at) = YEAR(CURRENT_DATE()))';
-} elseif ($dateFilter === '3_months') {
-    $where[] = '(l.created_at >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 MONTH))';
-} elseif ($dateFilter === 'custom' && $dateFrom && $dateTo) {
-    $where[] = '(DATE(l.created_at) >= ? AND DATE(l.created_at) <= ?)';
-    $params[] = $dateFrom;
-    $params[] = $dateTo;
-} elseif ($dateFilter === 'custom' && $dateFrom && !$dateTo) {
-    $where[] = '(DATE(l.created_at) >= ?)';
-    $params[] = $dateFrom;
-} elseif ($dateFilter === 'custom' && !$dateFrom && $dateTo) {
-    $where[] = '(DATE(l.created_at) <= ?)';
-    $params[] = $dateTo;
-}
-
-// Sales manager can only see own leads
-if ($user['role'] === 'sales_manager') {
-    $where[] = 'l.assigned_to=?';
-    $params[] = $user['id'];
-}
-
-$search = trim($_GET['q'] ?? '');
-if ($search) {
-    $where[]  = '(l.first_name LIKE ? OR l.last_name LIKE ? OR l.mobile LIKE ? OR l.email LIKE ?)';
-    $like = "%{$search}%";
-    array_push($params, $like, $like, $like, $like);
-}
-
-$whereStr = implode(' AND ', $where);
+// Code moved to top
 
 // ── Pagination ────────────────────────────────────────────────────────────────
 $perPage = 25;
@@ -453,6 +492,7 @@ include __DIR__ . '/includes/header.php';
 
     <div style="display:flex;gap:8px;align-items:flex-end;padding-bottom:1px">
       <a href="<?= BASE_URL ?>/index.php" class="btn btn-outline btn-sm" title="Clear all filters" style="font-family:'Inter',sans-serif;">Clear</a>
+      <button type="button" class="btn btn-outline btn-sm" title="Export CSV" style="font-family:'Inter',sans-serif; color:var(--accent); border-color:var(--accent);" onclick="exportReport()">📥 Export</button>
     </div>
   </form>
 </div>
@@ -516,6 +556,7 @@ include __DIR__ . '/includes/header.php';
 
 <form method="POST" id="bulkAssignForm">
 <input type="hidden" name="action" value="bulk_assign">
+<input type="hidden" name="global_select" id="globalSelectFlag" value="0">
 
 <!-- Lead count + add button -->
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
@@ -525,6 +566,9 @@ include __DIR__ . '/includes/header.php';
       <?= $source ? '· Source: <strong style="color:var(--accent)">'.strtoupper($source).'</strong>' : '' ?>
     </span>
     <span id="selectedCount" style="display:none;background:rgba(201,169,110,0.15);color:#c9a96e;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;"></span>
+    <?php if ($user['role'] === 'admin'): ?>
+    <button type="button" id="btnSelectAllGlobal" style="display:none; background:transparent; border:1px solid var(--accent); padding:2px 10px; border-radius:12px; text-decoration:none; color:var(--accent); font-size:12px; font-weight:600; cursor:pointer;" onclick="selectAllGlobal()">Select all <?= number_format($totalRows) ?> leads</button>
+    <?php endif; ?>
   </div>
   <?php if ($user['role']==='admin'): ?>
   <div style="display:flex; gap:10px; align-items:center;">
@@ -664,6 +708,30 @@ include __DIR__ . '/includes/header.php';
 </form>
 
 <script>
+function exportReport() {
+    let url = window.location.href;
+    url += (url.indexOf('?') !== -1 ? '&' : '?') + 'export=csv';
+    window.location.href = url;
+}
+
+function selectAllGlobal() {
+    const btn = document.getElementById('btnSelectAllGlobal');
+    const flag = document.getElementById('globalSelectFlag');
+    if (flag.value === '0') {
+        flag.value = '1';
+        btn.textContent = 'All <?= number_format($totalRows) ?> leads selected';
+        btn.style.background = '#4ade80';
+        btn.style.borderColor = '#4ade80';
+        btn.style.color = '#0a0e17';
+    } else {
+        flag.value = '0';
+        btn.textContent = 'Select all <?= number_format($totalRows) ?> leads';
+        btn.style.background = 'transparent';
+        btn.style.borderColor = 'var(--accent)';
+        btn.style.color = 'var(--accent)';
+    }
+}
+
 // ── Debounced search auto-submit ───────────────────────────────────────
 let searchTimer = null;
 const searchInput = document.getElementById('searchInput');
@@ -749,6 +817,7 @@ function toggleBulkActions() {
     const countBadge = document.getElementById('selectedCount');
     const selectAll = document.getElementById('selectAllLeads');
     const allBoxes = document.querySelectorAll('.lead-checkbox');
+    const btnGlobal = document.getElementById('btnSelectAllGlobal');
 
     if (checked.length > 0) {
         if(bulkDiv) bulkDiv.style.display = 'flex';
@@ -761,10 +830,33 @@ function toggleBulkActions() {
         if(bulkDiv) bulkDiv.style.display = 'none';
         if(addBtn) addBtn.style.display = 'inline-flex';
         if(countBadge) countBadge.style.display = 'none';
+        // Reset global
+        if(btnGlobal) {
+             btnGlobal.style.display = 'none';
+             document.getElementById('globalSelectFlag').value = '0';
+             btnGlobal.textContent = 'Select all <?= number_format($totalRows) ?> leads';
+             btnGlobal.style.background = 'transparent';
+             btnGlobal.style.borderColor = 'var(--accent)';
+             btnGlobal.style.color = 'var(--accent)';
+        }
     }
     if (selectAll) {
         selectAll.checked = allBoxes.length > 0 && checked.length === allBoxes.length;
         selectAll.indeterminate = checked.length > 0 && checked.length < allBoxes.length;
+        
+        // Show global select button if selecting all on current page and there are more pages
+        if (btnGlobal) {
+            if (selectAll.checked && <?= $totalRows ?> > allBoxes.length) {
+                btnGlobal.style.display = 'inline-block';
+            } else {
+                btnGlobal.style.display = 'none';
+                document.getElementById('globalSelectFlag').value = '0';
+                btnGlobal.textContent = 'Select all <?= number_format($totalRows) ?> leads';
+                btnGlobal.style.background = 'transparent';
+                btnGlobal.style.borderColor = 'var(--accent)';
+                btnGlobal.style.color = 'var(--accent)';
+            }
+        }
     }
 }
 
