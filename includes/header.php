@@ -530,10 +530,10 @@ textarea.form-control { resize: vertical; min-height: 90px; }
 .alert-info    { background:rgba(59,130,246,0.1); border:1px solid rgba(59,130,246,0.25); color:#93c5fd; }
 
 /* Pagination */
-.pagination { display: flex; gap: 6px; align-items: center; justify-content: center; margin-top: 20px; }
+.pagination { display: flex; gap: 6px; align-items: center; justify-content: center; margin-top: 20px; flex-wrap:wrap; }
 .pagination a, .pagination span {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 34px; height: 34px;
+  min-width: 34px; height: 34px; padding: 0 10px;
   border-radius: 8px; font-size: 13px; font-weight: 600;
   text-decoration: none; color: var(--text2);
   border: 1px solid var(--border);
@@ -569,19 +569,40 @@ textarea.form-control { resize: vertical; min-height: 90px; }
 .modal-close { background:none; border:none; color:var(--text2); font-size:22px; cursor:pointer; }
 .modal-close:hover { color:var(--text); }
 
+/* Header / Mobile Toggle */
+.sidebar-toggle {
+  display: none; background: transparent; border: 1px solid var(--border);
+  color: var(--text); padding: 8px; border-radius: 8px; cursor: pointer;
+  margin-right: 14px;
+}
+.sidebar-toggle:hover { background: rgba(255,255,255,0.05); }
+
 /* Responsive */
 @media (max-width: 768px) {
-  .sidebar { transform: translateX(-100%); transition: transform 0.3s; }
+  .sidebar { transform: translateX(-100%); transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 10px 0 30px rgba(0,0,0,0.5); }
   .sidebar.open { transform: translateX(0); }
-  .main-wrap { margin-left: 0; }
+  .main-wrap { margin-left: 0; width: 100%; }
   .grid-4, .grid-3, .grid-2 { grid-template-columns: 1fr; }
-  .notif-panel { width: calc(100vw - 24px); right: -60px; }
+  .topbar { padding: 0 16px; }
+  .sidebar-toggle { display: inline-flex; align-items: center; justify-content: center; }
+  .notif-panel { width: calc(100vw - 32px); right: -10px; }
+  .page-content { padding: 16px; min-width: 0; }
+  .topbar-title { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px; }
+}
+
+/* Modal Mobile Fix */
+@media (max-width: 480px) {
+  .modal { padding: 24px 16px; width: 95%; }
+  .modal-title { font-size: 18px; }
 }
 </style>
 </head>
 <body>
 
-<nav class="sidebar">
+<!-- Mobile Overlay -->
+<div id="mobileOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(2px);z-index:90;" onclick="toggleSidebar()"></div>
+
+<nav class="sidebar" id="appSidebar">
   <div class="sidebar-logo">
     <div class="name" style="font-size:16px;line-height:1.2;margin-bottom:2px">LSR Lakshsiddh<br>Realty LLP</div>
     <div class="sub" style="letter-spacing:1px;font-size:10px">By PROPNMORE</div>
@@ -651,7 +672,12 @@ textarea.form-control { resize: vertical; min-height: 90px; }
 
 <div class="main-wrap">
   <div class="topbar">
-    <span class="topbar-title"><?= htmlspecialchars($pageTitle) ?></span>
+    <div style="display:flex;align-items:center;">
+      <button class="sidebar-toggle" onclick="toggleSidebar()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <span class="topbar-title"><?= htmlspecialchars($pageTitle) ?></span>
+    </div>
     <div class="topbar-right">
 
       <?php if ($user['role']==='admin'): ?>

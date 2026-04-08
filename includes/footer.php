@@ -6,6 +6,13 @@
 function openModal(id) { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
+function toggleSidebar() {
+    const sb = document.getElementById('appSidebar');
+    const ov = document.getElementById('mobileOverlay');
+    if (sb) sb.classList.toggle('open');
+    if (ov) ov.style.display = sb.classList.contains('open') ? 'block' : 'none';
+}
+
 // Close modal on backdrop click
 document.querySelectorAll('.modal-bg').forEach(bg => {
   bg.addEventListener('click', e => { if (e.target === bg) bg.classList.remove('open'); });
