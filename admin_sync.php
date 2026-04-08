@@ -53,6 +53,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    // ── CNP Greenfield Sheet Sync ──
+    if ($syncType === 'cnp_greenfield') {
+        try {
+            require_once __DIR__ . '/includes/sheets.php';
+            $api = new SheetsAPI();
+            $n = $api->syncCNPGreenfield();
+            $results[] = ['source' => 'CNP Greenfield (All Projects)', 'count' => $n, 'ok' => true];
+        } catch (Exception $e) {
+            $error = $e->getMessage();
+        }
+    }
+
     // ── Meta API Sync (from Facebook directly) ──
     if ($syncType === 'meta_api') {
         $PAGE_ID = '387375521120468';
@@ -208,6 +220,25 @@ include __DIR__ . '/includes/header.php';
       </div>
 
       <button type="submit" name="sync_type" value="sheets" class="btn btn-primary" style="width:100%">🔄 Sync Google Sheets</button>
+    </form>
+  </div>
+
+  <!-- CNP Greenfield Sheet Sync -->
+  <div class="card" style="margin-top:20px;border-color:rgba(74,222,128,0.25)">
+    <form method="POST">
+      <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#4ade80;margin-bottom:12px">📋 CNP Greenfield Sheet Sync</div>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:12px">Import ALL historical leads from the CNP Greenfield Google Sheet. This sheet has 7 projects arranged side-by-side:</p>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px">
+        <span style="background:rgba(74,222,128,0.1);color:#4ade80;border:1px solid rgba(74,222,128,0.2);padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;">Elevate Shop</span>
+        <span style="background:rgba(74,222,128,0.1);color:#4ade80;border:1px solid rgba(74,222,128,0.2);padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;">Athena</span>
+        <span style="background:rgba(74,222,128,0.1);color:#4ade80;border:1px solid rgba(74,222,128,0.2);padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;">Studio Apartment</span>
+        <span style="background:rgba(74,222,128,0.1);color:#4ade80;border:1px solid rgba(74,222,128,0.2);padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;">One Holding Kharadi</span>
+        <span style="background:rgba(74,222,128,0.1);color:#4ade80;border:1px solid rgba(74,222,128,0.2);padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;">Jhamtani Ace Abundance</span>
+        <span style="background:rgba(74,222,128,0.1);color:#4ade80;border:1px solid rgba(74,222,128,0.2);padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;">Jhamtani Spacebiz Baner</span>
+        <span style="background:rgba(74,222,128,0.1);color:#4ade80;border:1px solid rgba(74,222,128,0.2);padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;">Azalea/Athena</span>
+      </div>
+      <p style="color:#4ade80;font-size:11px;margin-bottom:14px;opacity:0.8;">💡 Duplicates are automatically skipped by phone number. Only NEW leads will be imported.</p>
+      <button type="submit" name="sync_type" value="cnp_greenfield" class="btn btn-primary" style="width:100%;background:linear-gradient(135deg,#22c55e,#4ade80);color:#0a0e17;font-weight:700;">📥 Import All CNP Greenfield Leads</button>
     </form>
   </div>
 
