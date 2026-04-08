@@ -265,7 +265,17 @@ include __DIR__ . '/includes/header.php';
 ?>
 
 <div style="display:flex;align-items:center;gap:14px;margin-bottom:24px;flex-wrap:wrap">
-  <a href="<?= BASE_URL ?>/index.php" id="btn-back" class="btn btn-outline btn-sm">← Back</a>
+  <button id="btn-back" class="btn btn-outline btn-sm" onclick="goBackOrHome()">← Back</button>
+  <script>
+  function goBackOrHome() {
+      const lastUrl = sessionStorage.getItem('lastIndexUrl');
+      if (lastUrl) {
+          window.location.href = lastUrl;
+      } else {
+          window.location.href = '<?= BASE_URL ?>/index.php';
+      }
+  }
+  </script>
   <span class="badge badge-<?= $lead['source'] ?>"><?= ucfirst($lead['source']) ?></span>
   <span class="badge badge-<?= $lead['lead_type'] ?>">
     <?= match($lead['lead_type']) { 'hot'=>'🔥 Hot', 'warm'=>'☀️ Warm', 'cold'=>'❄️ Cold', default=>'' } ?>

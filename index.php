@@ -958,18 +958,55 @@ function confirmBulkAssign() {
 <!-- Pagination -->
 <?php if ($totalPages > 1): ?>
 <div class="pagination">
-  <?php for ($i=1;$i<=$totalPages;$i++): ?>
-    <?php
-    $qp = array_merge($_GET, ['pg' => $i]);
-    $qs = http_build_query($qp);
-    ?>
-    <?php if ($i === $page): ?>
-      <span class="cur"><?= $i ?></span>
-    <?php else: ?>
-      <a href="?<?= $qs ?>"><?= $i ?></a>
-    <?php endif; ?>
-  <?php endfor; ?>
+  <?php 
+  $visiblePages = 5; 
+  $startPage = max(1, $page - floor($visiblePages/2));
+  $endPage = min($totalPages, $startPage + $visiblePages - 1);
+  if ($endPage - $startPage + 1 < $visiblePages) {
+      $startPage = max(1, $endPage - $visiblePages + 1);
+  }
+  
+  if ($page > 1) {
+      $qp = array_merge($_GET, ['pg' => $page - 1]);
+      echo '<a href="?' . http_build_query($qp) . '">&laquo; Prev</a>';
+  }
+  
+  if ($startPage > 1) {
+      $qp = array_merge($_GET, ['pg' => 1]);
+      echo '<a href="?' . http_build_query($qp) . '">1</a>';
+      if ($startPage > 2) echo '<span class="dots">...</span>';
+  }
+
+  for ($i = $startPage; $i <= $endPage; $i++) {
+      $qp = array_merge($_GET, ['pg' => $i]);
+      $qs = http_build_query($qp);
+      if ($i === $page) {
+          echo '<span class="cur">' . $i . '</span>';
+      } else {
+          echo '<a href="?' . $qs . '">' . $i . '</a>';
+      }
+  }
+
+  if ($endPage < $totalPages) {
+      if ($endPage < $totalPages - 1) echo '<span class="dots">...</span>';
+      $qp = array_merge($_GET, ['pg' => $totalPages]);
+      echo '<a href="?' . http_build_query($qp) . '">' . $totalPages . '</a>';
+  }
+
+  if ($page < $totalPages) {
+      $qp = array_merge($_GET, ['pg' => $page + 1]);
+      echo '<a href="?' . http_build_query($qp) . '">Next &raquo;</a>';
+  }
+  ?>
 </div>
+<style>
+.pagination .dots { padding: 8px 12px; color: var(--text2); display: inline-block; vertical-align: bottom; }
+</style>
 <?php endif; ?>
+
+<script>
+// Save current URL (with all page and filter params) so we can return to it later
+sessionStorage.setItem('lastIndexUrl', window.location.href);
+</script>
 
 <?php include __DIR__ . '/includes/footer.php'; ?>
