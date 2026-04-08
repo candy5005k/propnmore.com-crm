@@ -632,6 +632,9 @@ textarea.form-control { resize: vertical; min-height: 90px; }
   <a href="<?= BASE_URL ?>/admin_projects.php" class="nav-item <?= $currentPage==='admin_projects'?'active':'' ?>">
     <span class="icon">🏗️</span> Projects
   </a>
+  <a href="<?= BASE_URL ?>/google_auth.php" class="nav-item <?= $currentPage==='google_auth'?'active':'' ?>">
+    <span class="icon">🔐</span> Google Auth
+  </a>
   <?php endif; ?>
 
   <div class="sidebar-footer">
