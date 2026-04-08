@@ -21,7 +21,8 @@ $clientId     = GOOGLE_CLIENT_ID;
 $clientSecret = GOOGLE_CLIENT_SECRET;
 $tokenFile    = GOOGLE_TOKEN_FILE;
 // Must match EXACTLY what's in Google Cloud Console → Authorized redirect URIs
-$redirectUri   = BASE_URL . '/google_auth.php';
+// Google Console has it registered WITH trailing slash
+$redirectUri   = BASE_URL . '/google_auth.php/';
 
 // Scopes needed for Google Sheets read access
 $scopes = 'https://www.googleapis.com/auth/spreadsheets.readonly';
