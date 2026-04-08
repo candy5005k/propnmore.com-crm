@@ -6,9 +6,7 @@ $pageTitle = 'Projects';
 $pdo   = db();
 $error = $success = '';
 
-// ── Auto-Detect Projects from Leads ──────────────────────────────────────────
-// If leads come in via API/Webhook with a 'project_name', this automatically
-// creates the project in the projects table and links the leads permanently.
+// ── Auto-Detect New Projects ───────────────────────────────────────────────────
 $pdo->exec("INSERT IGNORE INTO projects (name) 
             SELECT DISTINCT project_name FROM leads 
             WHERE project_name IS NOT NULL AND project_name != ''");
@@ -16,6 +14,7 @@ $pdo->exec("INSERT IGNORE INTO projects (name)
 $pdo->exec("UPDATE leads l JOIN projects p ON l.project_name = p.name 
             SET l.project_id = p.id 
             WHERE l.project_id IS NULL");
+
 
 // ── Manual Actions ───────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['pname'])) {
@@ -27,7 +26,6 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['pname'])) {
 }
 if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['del_id'])) {
     $pid = (int)$_POST['del_id'];
-    // Update leads first to unset project_id to prevent constraint issues just in case
     $pdo->prepare('UPDATE leads SET project_id=NULL WHERE project_id=?')->execute([$pid]);
     $pdo->prepare('DELETE FROM projects WHERE id=?')->execute([$pid]);
     $success = 'Project removed.';
@@ -36,6 +34,33 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['del_id'])) {
 $projects = $pdo->query('SELECT p.*, COUNT(l.id) AS lead_count
     FROM projects p LEFT JOIN leads l ON l.project_id=p.id
     GROUP BY p.id ORDER BY p.name')->fetchAll();
+
+// Group projects by base name
+$groups = [];
+foreach ($projects as $p) {
+    $name = $p['name'];
+    $lower = strtolower($name);
+    
+    // Attempt Auto-Grouping by keywords
+    $groupName = null;
+    if (strpos($lower, 'athena') !== false) $groupName = 'Athena';
+    elseif (strpos($lower, 'azalea') !== false) $groupName = 'Azalea';
+    elseif (strpos($lower, 'elevate') !== false) $groupName = 'Elevate';
+    elseif (strpos($lower, 'jhamtani') !== false) $groupName = 'Jhamtani';
+    elseif (strpos($lower, 'md studio') !== false || strpos($lower, 'md  studio') !== false) $groupName = 'MD Studio Apartment';
+    elseif (strpos($lower, 'one holding') !== false || strpos($lower, 'one studio') !== false) $groupName = 'ONE Holding';
+    elseif (strpos($lower, 'one suites') !== false) $groupName = 'One Suites';
+    elseif (strpos($lower, 'studio apartment') !== false) $groupName = 'Studio Apartment (General)';
+    
+    if (!$groupName) {
+        $groupName = $name; // Standalone project
+    }
+    
+    if (!isset($groups[$groupName])) $groups[$groupName] = ['total_leads' => 0, 'items' => []];
+    $groups[$groupName]['items'][] = $p;
+    $groups[$groupName]['total_leads'] += $p['lead_count'];
+}
+ksort($groups);
 
 // Dashboard Stats
 $stats = $pdo->query('SELECT 
@@ -61,6 +86,9 @@ include __DIR__ . '/includes/header.php';
     .si-total{background:#c9a96e;} .si-active{background:#4ade80;} .si-leads{background:#60a5fa;} .si-new{background:#c084fc;}
     .stat-label{font-family:'Inter',sans-serif;font-size:12px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:#8a9ab8;margin-bottom:8px;}
     .stat-value{font-family:'Inter',sans-serif;font-weight:700;font-size:24px;color:#dde3f0;}
+    .tr-group-master { cursor: pointer; transition: 0.2s; background: rgba(201,169,110,0.03); }
+    .tr-group-master:hover { background: rgba(201,169,110,0.08); }
+    .tr-sub-item td { background: rgba(14, 21, 33, 0.5); font-size:13px; }
   </style>
   <div class="grid-4" style="margin-bottom:24px">
     <div class="stat-card" style="padding:20px;background:#111827;border:1px solid #1e2d45;border-radius:12px;">
@@ -89,10 +117,10 @@ include __DIR__ . '/includes/header.php';
   </div>
 
   <div class="tbl-wrap">
-    <table>
+    <table id="projectsTable">
       <thead>
           <tr>
-            <th># ID</th>
+            <th>#</th>
             <th>Project Name</th>
             <th style="text-align:center;">Leads Received</th>
             <th>Added On</th>
@@ -103,29 +131,83 @@ include __DIR__ . '/includes/header.php';
         <?php if (empty($projects)): ?>
         <tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text2);">No projects found.</td></tr>
         <?php endif; ?>
-        <?php foreach ($projects as $p): ?>
-        <tr>
-          <td style="color:var(--text2);font-size:12px">#<?= $p['id'] ?></td>
-          <td><strong style="font-size:14px;"><?= htmlspecialchars($p['name']) ?></strong></td>
-          <td style="text-align:center;">
-            <?php if ($p['lead_count'] > 0): ?>
-                <a href="<?= BASE_URL ?>/index.php?project=<?= $p['id'] ?>" style="display:inline-block;background:rgba(201,169,110,0.15);color:#c9a96e;text-decoration:none;font-size:13px;padding:4px 12px;border-radius:20px;font-weight:600;transition:0.2s;">
-                  <?= $p['lead_count'] ?> leads →
-                </a>
+        <?php 
+          $srNo = 1; 
+          foreach ($groups as $groupName => $groupData): 
+            $isGroup = count($groupData['items']) > 1;
+            $groupId = md5($groupName);
+        ?>
+            <?php if ($isGroup): ?>
+            <!-- Master Category Row -->
+            <tr class="tr-group-master" onclick="document.querySelectorAll('.sub-group-<?= $groupId ?>').forEach(e => e.style.display = e.style.display === 'none' ? 'table-row' : 'none');">
+              <td style="color:var(--accent);font-size:13px;font-weight:700;"><?= $srNo++ ?></td>
+              <td style="font-size:15px;">
+                  <strong style="color:var(--accent);">📁 <?= htmlspecialchars($groupName) ?></strong>
+                  <span style="font-size:12px;color:var(--text2);margin-left:8px;font-weight:500;">(<?= count($groupData['items']) ?> sub-forms) ▼</span>
+              </td>
+              <td style="text-align:center;">
+                  <span style="display:inline-block;background:rgba(201,169,110,0.2);color:#c9a96e;font-size:14px;padding:4px 14px;border-radius:20px;font-weight:700;">
+                    <?= $groupData['total_leads'] ?> total leads
+                  </span>
+              </td>
+              <td colspan="2"></td>
+            </tr>
+            
+            <!-- Sub-items (Hidden by default) -->
+            <?php $subIndex = 1; foreach($groupData['items'] as $p): ?>
+            <tr class="sub-group-<?= $groupId ?> tr-sub-item" style="display:none;">
+              <td style="color:var(--text2);font-size:12px;text-align:right;padding-right:12px;">↳ <?= $subIndex++ ?></td>
+              <td style="padding-left:24px;">
+                <strong style="font-size:13px;color:#e0e6ef;"><?= htmlspecialchars($p['name']) ?></strong>
+              </td>
+              <td style="text-align:center;">
+                <?php if ($p['lead_count'] > 0): ?>
+                    <a href="<?= BASE_URL ?>/index.php?project=<?= $p['id'] ?>" style="display:inline-block;background:transparent;color:var(--text2);text-decoration:none;font-size:13px;padding:4px 12px;border:1px solid #1e2d45;border-radius:20px;transition:0.2s;" onmouseover="this.style.color='#c9a96e';this.style.borderColor='#c9a96e';" onmouseout="this.style.color='var(--text2)';this.style.borderColor='#1e2d45';">
+                      <?= $p['lead_count'] ?> leads →
+                    </a>
+                <?php else: ?>
+                    <span style="color:var(--text2);font-size:12px;">0 leads</span>
+                <?php endif; ?>
+              </td>
+              <td style="color:var(--text2);font-size:12px;"><?= date('d M Y', strtotime($p['created_at'])) ?></td>
+              <td style="text-align:right;">
+                <form method="POST" onsubmit="return confirm('Remove sub-project form?')">
+                  <input type="hidden" name="del_id" value="<?= $p['id'] ?>">
+                  <button type="submit" style="background:transparent;border:1px solid rgba(239,68,68,0.3);color:#f87171;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px;transition:0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.1)'" onmouseout="this.style.background='transparent'">
+                    Delete
+                  </button>
+                </form>
+              </td>
+            </tr>
+            <?php endforeach; ?>
+            
             <?php else: ?>
-                <span style="color:var(--text2);font-size:13px;padding:4px 12px;">0 leads</span>
+            <!-- Single standalone project row -->
+            <?php $p = $groupData['items'][0]; ?>
+            <tr>
+              <td style="color:var(--text2);font-size:13px;font-weight:600;"><?= $srNo++ ?></td>
+              <td><strong style="font-size:14px;"><?= htmlspecialchars($p['name']) ?></strong></td>
+              <td style="text-align:center;">
+                <?php if ($p['lead_count'] > 0): ?>
+                    <a href="<?= BASE_URL ?>/index.php?project=<?= $p['id'] ?>" style="display:inline-block;background:rgba(201,169,110,0.15);color:#c9a96e;text-decoration:none;font-size:13px;padding:4px 12px;border-radius:20px;font-weight:600;transition:0.2s;">
+                      <?= $p['lead_count'] ?> leads →
+                    </a>
+                <?php else: ?>
+                    <span style="color:var(--text2);font-size:13px;padding:4px 12px;">0 leads</span>
+                <?php endif; ?>
+              </td>
+              <td style="color:var(--text2);font-size:13px;"><?= date('d M Y', strtotime($p['created_at'])) ?></td>
+              <td style="text-align:right;">
+                <form method="POST" onsubmit="return confirm('Remove this project?')">
+                  <input type="hidden" name="del_id" value="<?= $p['id'] ?>">
+                  <button type="submit" style="background:transparent;border:1px solid rgba(239,68,68,0.3);color:#f87171;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:14px;transition:0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.1)'" onmouseout="this.style.background='transparent'">
+                    🗑 Delete
+                  </button>
+                </form>
+              </td>
+            </tr>
             <?php endif; ?>
-          </td>
-          <td style="color:var(--text2);font-size:13px;"><?= date('d M Y', strtotime($p['created_at'])) ?></td>
-          <td style="text-align:right;">
-            <form method="POST" onsubmit="return confirm('Remove this project? Leads will not be deleted, but they will be unlinked from it.')">
-              <input type="hidden" name="del_id" value="<?= $p['id'] ?>">
-              <button type="submit" style="background:transparent;border:1px solid rgba(239,68,68,0.3);color:#f87171;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:14px;transition:0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.1)'" onmouseout="this.style.background='transparent'">
-                🗑 Delete
-              </button>
-            </form>
-          </td>
-        </tr>
+            
         <?php endforeach; ?>
       </tbody>
     </table>
