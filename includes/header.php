@@ -440,24 +440,24 @@ body {
 .stat-sub   { font-size: 12px; color: var(--text2); margin-top: 6px; }
 
 /* Tables */
-.tbl-wrap { overflow-x: auto; border-radius: 12px; border: 1px solid var(--border); }
-table { width: 100%; border-collapse: collapse; }
+.tbl-wrap { overflow-x: auto; border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 4px 20px rgba(0,0,0,0.15); }
+table { width: 100%; border-collapse: collapse; font-family: 'Inter', 'DM Sans', sans-serif; }
 thead th {
   background: var(--surface2);
-  padding: 12px 14px;
-  font-size: 11px;
+  padding: 14px 16px;
+  font-size: 11.5px;
   font-weight: 700;
-  letter-spacing: 1px;
+  letter-spacing: 0.8px;
   text-transform: uppercase;
   color: var(--text2);
   text-align: left;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
-tbody tr { border-bottom: 1px solid var(--border); transition: background 0.15s; }
+tbody tr { border-bottom: 1px solid var(--border); transition: all 0.2s ease-in-out; }
 tbody tr:last-child { border-bottom: none; }
-tbody tr:hover { background: var(--surface2); }
-tbody td { padding: 13px 14px; font-size: 13.5px; vertical-align: middle; }
+tbody tr:hover { background: rgba(20, 29, 46, 0.7); transform: translateY(-1px); box-shadow: inset 0 0 0 1px rgba(201,169,110,0.1); }
+tbody td { padding: 14px 16px; font-size: 14px; vertical-align: middle; line-height: 1.5; color: var(--text); }
 
 /* Badges */
 .badge {

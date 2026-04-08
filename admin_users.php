@@ -42,8 +42,15 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['action']) && $_POST['ac
             $error = 'Email already exists.';
         } else {
             $hash = password_hash($pass, PASSWORD_BCRYPT, ['cost'=>12]);
-            $pdo->prepare('INSERT INTO users (name,email,password,role,mobile,is_active) VALUES (?,?,?,?,?,1)')
-                ->execute([$name, $email, $hash, $role, $smobile]);
+            // Try inserting with mobile; fall back if column doesn't exist
+            try {
+                $pdo->prepare('INSERT INTO users (name,email,password,role,mobile,is_active) VALUES (?,?,?,?,?,1)')
+                    ->execute([$name, $email, $hash, $role, $smobile]);
+            } catch (\Exception $e) {
+                // mobile column missing — insert without it
+                $pdo->prepare('INSERT INTO users (name,email,password,role,is_active) VALUES (?,?,?,?,1)')
+                    ->execute([$name, $email, $hash, $role]);
+            }
             $success = 'User created and activated.';
         }
     }
@@ -55,7 +62,12 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['action']) && $_POST['ac
     $pass  = $_POST['new_password'] ?? '';
     $upMob = preg_replace('/\D/', '', trim($_POST['update_mobile'] ?? ''));
     if ($upMob) {
-        $pdo->prepare('UPDATE users SET mobile=? WHERE id=?')->execute([$upMob, $uid]);
+        try {
+            $pdo->prepare('UPDATE users SET mobile=? WHERE id=?')->execute([$upMob, $uid]);
+        } catch (\Exception $e) {
+            // mobile column not in DB yet — silently skip
+            $upMob = '';
+        }
     }
     if ($pass && strlen($pass) >= 8) {
         $hash = password_hash($pass, PASSWORD_BCRYPT, ['cost'=>12]);
@@ -68,9 +80,19 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['action']) && $_POST['ac
     }
 }
 
-$users = $pdo->query('SELECT u.*,
+// Check if mobile column exists
+$mobileColExists = false;
+try {
+    $pdo->query('SELECT mobile FROM users LIMIT 1');
+    $mobileColExists = true;
+} catch (\Exception $e) {
+    $mobileColExists = false;
+}
+
+$mobileSelect = $mobileColExists ? ', u.mobile' : ', NULL AS mobile';
+$users = $pdo->query("SELECT u.id, u.name, u.email, u.role, u.is_active, u.created_at {$mobileSelect},
     (SELECT COUNT(*) FROM leads l WHERE l.assigned_to=u.id) AS lead_count
-    FROM users u ORDER BY u.role ASC, u.name ASC')->fetchAll();
+    FROM users u ORDER BY u.role ASC, u.name ASC")->fetchAll();
 
 include __DIR__ . '/includes/header.php';
 ?>
