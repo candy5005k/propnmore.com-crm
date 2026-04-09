@@ -106,3 +106,18 @@ CREATE TABLE notifications (
 INSERT INTO users (name, email, password, role, is_active) VALUES
 ('PD Admin', 'PD@propnmore.com', '$2y$12$placeholder_will_use_otp', 'admin', 1),
 ('CS Admin', 'CS@propnmore.com', '$2y$12$placeholder_will_use_otp', 'admin', 1);
+
+-- Calendar Events (Action plan / reminders for users)
+CREATE TABLE calendar_events (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    lead_id INT NULL,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    event_date DATE NOT NULL,
+    event_time TIME NULL,
+    is_completed TINYINT(1) DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE SET NULL
+);

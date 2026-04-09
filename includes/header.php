@@ -612,6 +612,9 @@ textarea.form-control { resize: vertical; min-height: 90px; }
   <a href="<?= BASE_URL ?>/index.php" class="nav-item <?= $currentPage==='index'?'active':'' ?>">
     <span class="icon">📋</span> All Leads
   </a>
+  <a href="<?= BASE_URL ?>/calendar.php" class="nav-item <?= $currentPage==='calendar'?'active':'' ?>">
+    <span class="icon">📅</span> Calendar
+  </a>
   <?php if ($user['role']==='admin'): ?>
   <a href="<?= BASE_URL ?>/leads_new.php" class="nav-item <?= $currentPage==='leads_new'?'active':'' ?>">
     <span class="icon">➕</span> Add Lead

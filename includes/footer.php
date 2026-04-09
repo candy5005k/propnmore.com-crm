@@ -172,6 +172,25 @@ setInterval(() => {
       lastKnownCount = newCount;
     })
     .catch(() => {});
+
+  // ── Poll for Calendar Reminders ──
+  fetch(window.location.pathname.replace(/\/[\w-]+\.php.*/, '') + '/ajax_calendar_events.php?action=check_reminders')
+    .then(r => r.json())
+    .then(data => {
+      if (data.status === 'success' && data.reminders.length > 0) {
+        data.reminders.forEach(rem => {
+          // Check if we already notified about this exact reminder in this session to prevent spam
+          const key = 'notified_rem_' + rem.id;
+          if (!sessionStorage.getItem(key)) {
+            sessionStorage.setItem(key, '1');
+            playNotifSound();
+            const leadUrl = rem.lead_id ? 'lead_detail.php?id=' + rem.lead_id : '';
+            showBrowserNotification('⏰ Reminder: ' + rem.title, 'Time: ' + rem.event_time + (rem.description ? '\n' + rem.description : ''), leadUrl);
+          }
+        });
+      }
+    }).catch(()=>{});
+
 }, 15000);
 </script>
 
