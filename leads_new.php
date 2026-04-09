@@ -37,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             (source,project_id,first_name,last_name,mobile,email,preference,lead_type,lead_status,assigned_to,comments)
             VALUES (?,?,?,?,?,?,?,?,?,?,?)')
         ->execute([
-            'manual', $pid,
+            $_POST['source'] ?? 'manual', $pid,
             $first, trim($_POST['last_name'] ?? ''),
             $mobile, trim($_POST['email'] ?? ''),
             trim($_POST['preference'] ?? ''),
@@ -109,14 +109,25 @@ include __DIR__ . '/includes/header.php';
       </div>
     </div>
 
-    <div class="form-group">
-      <label>Project</label>
-      <input type="text" name="project_name" class="form-control" list="proj-list" placeholder="Type or select project">
-      <datalist id="proj-list">
-        <?php foreach ($projects as $pr): ?>
-          <option value="<?= htmlspecialchars($pr['name']) ?>">
-        <?php endforeach; ?>
-      </datalist>
+    <div class="grid-2">
+      <div class="form-group">
+        <label>Source</label>
+        <select name="source" class="form-control">
+          <option value="manual">Manual</option>
+          <option value="website">Website</option>
+          <option value="meta">Meta</option>
+          <option value="google">Google</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Project</label>
+        <input type="text" name="project_name" class="form-control" list="proj-list" placeholder="Type or select project">
+        <datalist id="proj-list">
+          <?php foreach ($projects as $pr): ?>
+            <option value="<?= htmlspecialchars($pr['name']) ?>">
+          <?php endforeach; ?>
+        </datalist>
+      </div>
     </div>
 
     <div class="form-group">

@@ -226,6 +226,31 @@ class SheetsAPI {
      *   One Holding Kharadi (24-30), Jhamtani Ace Abundance (32-39),
      *   Jhamtani Spacebiz Baner (41-47), Azalea/Athena (49-54)
      */
+    /**
+     * Map any raw CNP section / Meta form name to the official master project name.
+     */
+    private function masterProjectName(string $rawName): string {
+        $map = [
+            'Elevate Shop'                         => 'Jhamtani Elevate Shop',
+            'Athena'                               => 'Athena Project',
+            'Studio Apartment'                     => 'ONE Suites',
+            'One Holding Kharadi Studio Apartment' => 'ONE Suites',
+            'One Holding Kharadi'                  => 'ONE Suites',
+            'One Holding'                          => 'ONE Suites',
+            'Jhamtani Ace Abundance'               => 'Jhamtani Spacebiz',
+            'Jhamtani Spacebiz Baner Commercial'   => 'Jhamtani Spacebiz',
+            'Jhamtani Spacebiz Baner'              => 'Jhamtani Spacebiz',
+            'Azalea/Athena Property'               => 'Azalea Project',
+            'Azalea'                               => 'Azalea Project',
+            'Godrej Skyline'                       => 'Godrej Skyline',
+            'MD Studio'                            => 'MD Studio Apartment',
+        ];
+        foreach ($map as $keyword => $master) {
+            if (stripos($rawName, $keyword) !== false) return $master;
+        }
+        return $rawName; // return as-is if no match
+    }
+
     public function syncCNPGreenfield(): int {
         // Fetch public CSV directly (no auth needed since sheet is shared)
         $sheetId = defined('SHEET_CNP_GREENFIELD_ID') ? SHEET_CNP_GREENFIELD_ID : '1smfb0vmFW3gaH9gbN7Jsze9cyA-t22ftunL2tX6NaQA';
@@ -345,8 +370,8 @@ class SheetsAPI {
                 $dup->execute(['%' . $cleanPhone]);
                 if ($dup->fetch()) continue;
 
-                // Get or create project
-                $projectName = $sec['name'];
+                // Map raw section name to official master project name
+                $projectName = $this->masterProjectName($sec['name']);
                 $projectId = null;
                 $ps = $pdo->prepare('SELECT id FROM projects WHERE name=?');
                 $ps->execute([$projectName]);
@@ -396,11 +421,12 @@ class SheetsAPI {
                     $createdAt = date('Y-m-d H:i:s');
                 }
 
-                $sql = 'INSERT INTO leads (source, project_id, first_name, mobile, preference, notes, sheet_date, lead_type, lead_status, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, "warm", "sv_pending", ?)';
+                $sql = 'INSERT INTO leads (source, project_id, project_name, first_name, mobile, preference, notes, sheet_date, lead_type, lead_status, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, "warm", "sv_pending", ?)';
                 $pdo->prepare($sql)->execute([
                     'meta',
                     $projectId,
+                    $projectName,
                     $name,
                     $phone,
                     $budget,

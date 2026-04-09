@@ -30,6 +30,34 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['del_id'])) {
     $pdo->prepare('DELETE FROM projects WHERE id=?')->execute([$pid]);
     $success = 'Project removed.';
 }
+if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['edit_id'], $_POST['new_name'])) {
+    $eid = (int)$_POST['edit_id'];
+    $newName = trim($_POST['new_name']);
+    if ($newName) {
+        // Check if the target name already exists (Merge Scenario)
+        $checkStmt = $pdo->prepare('SELECT id FROM projects WHERE LOWER(name) = LOWER(?) AND id != ?');
+        $checkStmt->execute([$newName, $eid]);
+        $existingId = $checkStmt->fetchColumn();
+        
+        if ($existingId) {
+            // MERGE: Move all existing leads from the current project to the target project
+            $pdo->prepare('UPDATE leads SET project_id = ?, project_name = ? WHERE project_id = ?')
+                ->execute([$existingId, $newName, $eid]);
+            // DELETE: Remove the now heavily-depleted duplicate project
+            $pdo->prepare('DELETE FROM projects WHERE id = ?')->execute([$eid]);
+            $success = "Successfully merged into existing '{$newName}'. Reflecting system wide.";
+        } else {
+            // RENAME: Safe standard rename
+            $oldP = $pdo->prepare('SELECT name FROM projects WHERE id=?'); $oldP->execute([$eid]); $old = $oldP->fetchColumn();
+            $pdo->prepare('UPDATE projects SET name=? WHERE id=?')->execute([$newName, $eid]);
+            if ($old) {
+                // Ensure legacy schema tags are in absolute sync natively.
+                $pdo->prepare('UPDATE leads SET project_name=? WHERE project_id=?')->execute([$newName, $eid]);
+            }
+            $success = "Project globally renamed to '{$newName}'.";
+        }
+    }
+}
 
 $projects = $pdo->query('SELECT p.*, COUNT(l.id) AS lead_count
     FROM projects p LEFT JOIN leads l ON l.project_id=p.id
@@ -41,20 +69,10 @@ foreach ($projects as $p) {
     $name = $p['name'];
     $lower = strtolower($name);
     
-    // Attempt Auto-Grouping by keywords
-    $groupName = null;
-    if (strpos($lower, 'athena') !== false) $groupName = 'Athena';
-    elseif (strpos($lower, 'azalea') !== false) $groupName = 'Azalea';
-    elseif (strpos($lower, 'elevate') !== false) $groupName = 'Elevate';
-    elseif (strpos($lower, 'jhamtani') !== false) $groupName = 'Jhamtani';
-    elseif (strpos($lower, 'md studio') !== false || strpos($lower, 'md  studio') !== false) $groupName = 'MD Studio Apartment';
-    elseif (strpos($lower, 'one holding') !== false || strpos($lower, 'one studio') !== false) $groupName = 'ONE Holding';
-    elseif (strpos($lower, 'one suites') !== false) $groupName = 'One Suites';
-    elseif (strpos($lower, 'studio apartment') !== false) $groupName = 'Studio Apartment (General)';
-    
-    if (!$groupName) {
-        $groupName = $name; // Standalone project
-    }
+    // By flattening the grouping system, every database project acts autonomously
+    // Admin can use the powerful Merge capability to natively group forms permanently in the DB
+    $groupName = $name;
+
     
     if (!isset($groups[$groupName])) $groups[$groupName] = ['total_leads' => 0, 'items' => []];
     $groups[$groupName]['items'][] = $p;
@@ -171,7 +189,14 @@ include __DIR__ . '/includes/header.php';
               </td>
               <td style="color:var(--text2);font-size:12px;"><?= date('d M Y', strtotime($p['created_at'])) ?></td>
               <td style="text-align:right;">
-                <form method="POST" onsubmit="return confirm('Remove sub-project form?')">
+                <form method="POST" data-old="<?= htmlspecialchars($p['name'], ENT_QUOTES) ?>" onsubmit="const nn=prompt('Enter new project name:', this.dataset.old); if(nn && nn!==this.dataset.old){ this.new_name.value=nn; return true; } return false;" style="display:inline-block; margin-right:4px;">
+                  <input type="hidden" name="edit_id" value="<?= $p['id'] ?>">
+                  <input type="hidden" name="new_name" value="">
+                  <button type="submit" style="background:transparent;border:1px solid rgba(96,165,250,0.3);color:#60a5fa;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px;transition:0.2s;" onmouseover="this.style.background='rgba(96,165,250,0.1)'" onmouseout="this.style.background='transparent'">
+                    Edit
+                  </button>
+                </form>
+                <form method="POST" onsubmit="return confirm('Remove sub-project form?')" style="display:inline-block;">
                   <input type="hidden" name="del_id" value="<?= $p['id'] ?>">
                   <button type="submit" style="background:transparent;border:1px solid rgba(239,68,68,0.3);color:#f87171;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px;transition:0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.1)'" onmouseout="this.style.background='transparent'">
                     Delete
@@ -198,7 +223,14 @@ include __DIR__ . '/includes/header.php';
               </td>
               <td style="color:var(--text2);font-size:13px;"><?= date('d M Y', strtotime($p['created_at'])) ?></td>
               <td style="text-align:right;">
-                <form method="POST" onsubmit="return confirm('Remove this project?')">
+                <form method="POST" data-old="<?= htmlspecialchars($p['name'], ENT_QUOTES) ?>" onsubmit="const nn=prompt('Enter new project name:', this.dataset.old); if(nn && nn!==this.dataset.old){ this.new_name.value=nn; return true; } return false;" style="display:inline-block; margin-right:4px;">
+                  <input type="hidden" name="edit_id" value="<?= $p['id'] ?>">
+                  <input type="hidden" name="new_name" value="">
+                  <button type="submit" style="background:transparent;border:1px solid rgba(96,165,250,0.3);color:#60a5fa;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:14px;transition:0.2s;" onmouseover="this.style.background='rgba(96,165,250,0.1)'" onmouseout="this.style.background='transparent'">
+                    ✏️ Edit
+                  </button>
+                </form>
+                <form method="POST" onsubmit="return confirm('Remove this project?')" style="display:inline-block;">
                   <input type="hidden" name="del_id" value="<?= $p['id'] ?>">
                   <button type="submit" style="background:transparent;border:1px solid rgba(239,68,68,0.3);color:#f87171;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:14px;transition:0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.1)'" onmouseout="this.style.background='transparent'">
                     🗑 Delete
