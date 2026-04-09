@@ -437,7 +437,10 @@ include __DIR__ . '/includes/header.php';
           <label>Next Follow-up Date (optional)</label>
           <input type="date" name="next_followup" class="form-control" min="<?= date('Y-m-d') ?>">
         </div>
-        <button type="submit" class="btn btn-primary btn-sm">📞 Log Call</button>
+        <div style="display:flex;gap:10px;align-items:center;">
+          <button type="submit" class="btn btn-primary btn-sm">📞 Log Call</button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="openReminderModal()">📅 Add to Calendar</button>
+        </div>
       </form>
     </div>
 
@@ -597,5 +600,86 @@ include __DIR__ . '/includes/header.php';
 
   </div>
 </div>
+
+<!-- Quick Add Reminder Modal -->
+<div class="modal-bg" id="addReminderModal">
+    <div class="modal" style="max-width:500px">
+        <div class="modal-header">
+            <div class="modal-title">📅 Add to Calendar</div>
+            <button class="modal-close" onclick="closeModal('addReminderModal')">&times;</button>
+        </div>
+        <form id="reminderForm" onsubmit="saveReminderAction(event)">
+            <input type="hidden" id="remLeadId" value="<?= $id ?>">
+            <div class="form-group">
+                <label>Reminder Title / Task</label>
+                <input type="text" class="form-control" id="remTitle" required placeholder="e.g. Call back regarding pricing">
+            </div>
+            <div class="grid-2">
+                <div class="form-group">
+                    <label>Date</label>
+                    <input type="date" class="form-control" id="remDate" value="<?= date('Y-m-d') ?>" required>
+                </div>
+                <div class="form-group">
+                    <label>Time</label>
+                    <input type="time" class="form-control" id="remTime">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Notes / Description</label>
+                <textarea class="form-control" id="remDesc" placeholder="Any extra details..." rows="3"></textarea>
+            </div>
+            <div style="display:flex;justify-content:flex-end;gap:12px;margin-top:20px;">
+                <button type="button" class="btn btn-outline" onclick="closeModal('addReminderModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary" id="btnSaveRem">Save to Calendar</button>
+            </div>
+        </form>
+    </div>
+</div>
+<script>
+function openReminderModal() {
+    openModal('addReminderModal');
+}
+function saveReminderAction(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btnSaveRem');
+    const og = btn.innerHTML;
+    btn.innerHTML = 'Saving...';
+    btn.disabled = true;
+
+    const fd = new FormData();
+    fd.append('title', document.getElementById('remTitle').value);
+    fd.append('description', document.getElementById('remDesc').value);
+    fd.append('event_date', document.getElementById('remDate').value);
+    fd.append('event_time', document.getElementById('remTime').value);
+    fd.append('lead_id', document.getElementById('remLeadId').value);
+
+    fetch('ajax_calendar_events.php?action=add', {
+        method: 'POST', body: fd
+    }).then(r => r.json()).then(d => {
+        closeModal('addReminderModal');
+        btn.innerHTML = og;
+        btn.disabled = false;
+        
+        // Custom animated success flash
+        const flash = document.createElement('div');
+        flash.innerHTML = '✅ Reminder added to Calendar!';
+        flash.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#10b981;color:#fff;padding:12px 20px;border-radius:8px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:999;animation:fadeUp 0.3s ease;';
+        document.body.appendChild(flash);
+        setTimeout(() => {
+            flash.style.opacity = '0';
+            flash.style.transition = 'opacity 0.5s ease';
+            setTimeout(() => flash.remove(), 500);
+        }, 3000);
+        
+        // Reset form
+        document.getElementById('reminderForm').reset();
+        document.getElementById('remDate').value = '<?= date('Y-m-d') ?>';
+    }).catch(() => {
+        btn.innerHTML = og;
+        btn.disabled = false;
+        alert('Could not save reminder. Please try again.');
+    });
+}
+</script>
 
 <?php include __DIR__ . '/includes/footer.php'; ?>
