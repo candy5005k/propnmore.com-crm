@@ -113,7 +113,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $email     = $fields['email'] ?? '';
                             $pref      = $fields['preference'] ?? $fields['select_your_preference'] ?? $fields['interested_in'] ?? $fields['configuration'] ?? '';
                             $mobile    = preg_replace('/[^0-9+]/', '', $mobile);
-                            $createdAt = $lead['created_time'] ?? date('Y-m-d H:i:s');
+                            $rawCreated = $lead['created_time'] ?? date('Y-m-d H:i:s');
+                            // ── Safeguard: cap future dates to NOW() ───────
+                            $createdAt = (strtotime($rawCreated) > time())
+                                ? date('Y-m-d H:i:s')  // if Facebook sends a future date, use NOW
+                                : date('Y-m-d H:i:s', strtotime($rawCreated));
 
                             $leadId = $lead['id'] ?? '';
                             if ($leadId) {

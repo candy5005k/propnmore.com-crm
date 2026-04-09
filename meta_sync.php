@@ -65,7 +65,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $TOKEN) {
                     $siteVisit = $fields['when_can_you_come_for_the_site_visit_?'] ?? $fields['site_visit'] ?? '';
 
                     $mobile = preg_replace('/[^0-9+]/', '', $mobile);
-                    $createdAt = $lead['created_time'] ?? date('Y-m-d H:i:s');
+                    $rawCreated = $lead['created_time'] ?? date('Y-m-d H:i:s');
+                    // ── Safeguard: cap future dates to NOW() ───────────────
+                    $createdAt = (strtotime($rawCreated) > time())
+                        ? date('Y-m-d H:i:s')   // if Facebook sends a future date, use NOW
+                        : date('Y-m-d H:i:s', strtotime($rawCreated));
 
                     // Dedup by source_row_id
                     $leadId = $lead['id'] ?? '';

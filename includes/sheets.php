@@ -391,6 +391,11 @@ class SheetsAPI {
                 if ($comment)   $notes .= "\nComment: {$comment}";
 
                 // Insert lead
+                // Safeguard: never store a future date
+                if ($createdAt && strtotime($createdAt) > time()) {
+                    $createdAt = date('Y-m-d H:i:s');
+                }
+
                 $sql = 'INSERT INTO leads (source, project_id, first_name, mobile, preference, notes, sheet_date, lead_type, lead_status, created_at)
                         VALUES (?, ?, ?, ?, ?, ?, ?, "warm", "sv_pending", ?)';
                 $pdo->prepare($sql)->execute([
